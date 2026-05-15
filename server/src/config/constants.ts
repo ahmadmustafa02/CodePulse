@@ -33,3 +33,14 @@ export const SUPPORTED_EVENTS = ['pull_request'] as const;
 export const PR_ACTIONS_TO_PROCESS = ['opened', 'synchronize', 'reopened'] as const;
 
 export const GITHUB_WEBHOOK_ROUTE = '/github';
+
+export const JWT_ALGORITHM = 'RS256';
+export const JWT_CLOCK_SKEW_SECONDS = 60;
+export const JWT_EXPIRY_MINUTES = 9;
+export const JWT_EXPIRY_SECONDS = JWT_EXPIRY_MINUTES * 60;
+
+export const DEV_NULL_PATH = '/dev/null';
+
+export const GITHUB_DIFF_MEDIA_FORMAT = 'diff';
+
+export const LOG_GROQ_PHASE_PLACEHOLDER = 'Groq analysis would happen here — Phase 4 placeholder';

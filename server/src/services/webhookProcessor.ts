@@ -1,7 +1,8 @@
 /** Processes validated GitHub webhook events asynchronously after HTTP acknowledgment. */
 
-import { PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
+import { LOG_GROQ_PHASE_PLACEHOLDER, PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
 import type { WebhookEvent } from '../types/github';
+import { githubDiffService } from './githubDiffService';
 import logger from '../utils/logger';
 
 function isSupportedEvent(eventType: string): boolean {
@@ -58,16 +59,70 @@ export class WebhookProcessor {
 
   private async handlePullRequest(event: WebhookEvent): Promise<void> {
     const { payload } = event;
+    const installationId = payload.installation?.id;
+
+    if (installationId === undefined) {
+      logger.error('No installation ID in payload', {
+        deliveryId: event.deliveryId,
+        repo: payload.repository.full_name,
+        prNumber: payload.pull_request.number,
+      });
+      return;
+    }
+
+    const owner = payload.repository.owner.login;
+    const repo = payload.repository.name;
+    const pullNumber = payload.pull_request.number;
+    const headSha = payload.pull_request.head.sha;
+
     logger.info('PR review pipeline started', {
       deliveryId: event.deliveryId,
-      prNumber: payload.number,
+      prNumber: pullNumber,
       repo: payload.repository.full_name,
+      installationId,
     });
-    logger.info('PR diff fetch would happen here', {
-      deliveryId: event.deliveryId,
-      prNumber: payload.number,
-      repo: payload.repository.full_name,
-    });
+
+    try {
+      const parsedDiff = await githubDiffService.fetchAndParseDiff({
+        installationId,
+        owner,
+        repo,
+        pullNumber,
+        headSha,
+      });
+
+      logger.info('Diff parsed successfully', {
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+        filesChanged: parsedDiff.files.length,
+        totalAdditions: parsedDiff.totalAdditions,
+        totalDeletions: parsedDiff.totalDeletions,
+        files: parsedDiff.files.map((file) => ({
+          filename: file.filename,
+          status: file.status,
+          additions: file.additions,
+          deletions: file.deletions,
+        })),
+      });
+
+      logger.info(LOG_GROQ_PHASE_PLACEHOLDER, {
+        deliveryId: event.deliveryId,
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+      });
+    } catch (error) {
+      logger.error('Failed to fetch or parse PR diff', {
+        deliveryId: event.deliveryId,
+        installationId,
+        owner,
+        repo,
+        pullNumber,
+        headSha,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
   }
 }
 
