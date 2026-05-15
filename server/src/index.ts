@@ -8,7 +8,6 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import {
   API_PREFIX,
-  JSON_BODY_LIMIT,
   RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
   SHUTDOWN_SIGNALS,
@@ -22,7 +21,8 @@ const app = express();
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json({ limit: JSON_BODY_LIMIT }));
+// express.json() is NOT applied globally: GitHub HMAC verification requires the raw
+// request body bytes on /webhooks. JSON parsing is mounted per-route in routes/index.ts.
 app.use(
   rateLimit({
     windowMs: RATE_LIMIT_WINDOW_MS,
