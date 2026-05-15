@@ -1,8 +1,9 @@
 /** Processes validated GitHub webhook events asynchronously after HTTP acknowledgment. */
 
-import { LOG_GROQ_PHASE_PLACEHOLDER, PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
+import { LOG_GITHUB_COMMENTS_PHASE_PLACEHOLDER, PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
 import type { WebhookEvent } from '../types/github';
 import { githubDiffService } from './githubDiffService';
+import { groqAnalysisService } from './groqAnalysisService';
 import logger from '../utils/logger';
 
 function isSupportedEvent(eventType: string): boolean {
@@ -105,13 +106,33 @@ export class WebhookProcessor {
         })),
       });
 
-      logger.info(LOG_GROQ_PHASE_PLACEHOLDER, {
+      const analysisResult = await groqAnalysisService.analyzeDiff(parsedDiff);
+
+      logger.info('Analysis complete', {
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+        issuesFound: analysisResult.issues.length,
+        breakdown: analysisResult.issues.reduce<Record<string, number>>((acc, issue) => {
+          acc[issue.severity] = (acc[issue.severity] ?? 0) + 1;
+          return acc;
+        }, {}),
+        issues: analysisResult.issues.map((issue) => ({
+          file: issue.file,
+          line: issue.line,
+          severity: issue.severity,
+          category: issue.category,
+          title: issue.title,
+        })),
+      });
+
+      logger.info(LOG_GITHUB_COMMENTS_PHASE_PLACEHOLDER, {
         deliveryId: event.deliveryId,
         prNumber: pullNumber,
         repo: `${owner}/${repo}`,
+        issuesFound: analysisResult.issues.length,
       });
     } catch (error) {
-      logger.error('Failed to fetch or parse PR diff', {
+      logger.error('Failed to process pull request', {
         deliveryId: event.deliveryId,
         installationId,
         owner,

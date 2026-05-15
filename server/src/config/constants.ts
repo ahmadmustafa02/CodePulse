@@ -43,4 +43,26 @@ export const DEV_NULL_PATH = '/dev/null';
 
 export const GITHUB_DIFF_MEDIA_FORMAT = 'diff';
 
-export const LOG_GROQ_PHASE_PLACEHOLDER = 'Groq analysis would happen here — Phase 4 placeholder';
+export const GROQ_MODEL = 'llama-3.3-70b-versatile';
+export const GROQ_MAX_COMPLETION_TOKENS = 4096;
+export const MAX_DIFF_TOKENS = 6000;
+export const MAX_DIFF_CHAR_LIMIT = MAX_DIFF_TOKENS * 4;
+export const MAX_ISSUES_PER_PR = 20;
+export const MAX_FILE_SIZE_LINES = 500;
+export const SKIPPABLE_FILE_PATTERNS = [
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  '*.min.js',
+  '*.min.css',
+  'dist/',
+  'build/',
+  '.next/',
+  'coverage/',
+] as const;
+
+export const LOG_GITHUB_COMMENTS_PHASE_PLACEHOLDER =
+  'GitHub inline comments would be posted here — Phase 5 placeholder';
+
+export const GROQ_TOOL_NAME = 'report_code_issues';
+export const CHARS_PER_ESTIMATED_TOKEN = 4;
