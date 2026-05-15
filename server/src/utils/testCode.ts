@@ -20,3 +20,5 @@ export async function fetchData(url: string) {
 export function divide(a: number, b: number) {
   return a / b
 }
+// new bad code
+export function unsafeLogin(user: any, pass: any) { return db.query(\SELECT * FROM users WHERE user='\' AND pass='\'\) }
