@@ -2,6 +2,7 @@
 
 import { PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
 import type { WebhookEvent } from '../types/github';
+import { databaseService } from './databaseService';
 import { githubCommentService } from './githubCommentService';
 import { githubDiffService } from './githubDiffService';
 import { groqAnalysisService } from './groqAnalysisService';
@@ -142,6 +143,70 @@ export class WebhookProcessor {
         issuesFound: analysisResult.issues.length,
         reviewPosted: true,
       });
+
+      try {
+        const organization = await databaseService.upsertOrganization({
+          githubInstallationId: installationId,
+          name: owner,
+        });
+
+        const repository = await databaseService.upsertRepository({
+          githubRepoId: payload.repository.id,
+          name: payload.repository.name,
+          fullName: payload.repository.full_name,
+          private: payload.repository.private,
+          organizationId: organization.id,
+        });
+
+        const developer = await databaseService.upsertDeveloper({
+          githubLogin: payload.pull_request.user.login,
+          githubUserId: payload.pull_request.user.id,
+          avatarUrl: payload.pull_request.user.avatar_url,
+          organizationId: organization.id,
+        });
+
+        const pullRequest = await databaseService.upsertPullRequest({
+          githubPrId: payload.pull_request.id,
+          prNumber: payload.pull_request.number,
+          title: payload.pull_request.title,
+          headSha: payload.pull_request.head.sha,
+          baseBranch: payload.pull_request.base.ref,
+          headBranch: payload.pull_request.head.ref,
+          organizationId: organization.id,
+          repositoryId: repository.id,
+          developerId: developer.id,
+        });
+
+        if (analysisResult.issues.length > 0) {
+          const issueData = analysisResult.issues.map((issue) => ({
+            file: issue.file,
+            line: issue.line,
+            category: issue.category,
+            severity: issue.severity,
+            title: issue.title,
+            explanation: issue.explanation,
+            suggestion: issue.suggestion,
+            codeSnippet: issue.codeSnippet,
+            organizationId: organization.id,
+            pullRequestId: pullRequest.id,
+            developerId: developer.id,
+          }));
+          await databaseService.createIssues(issueData);
+        }
+
+        logger.info('PR data saved to database', {
+          prNumber: pullNumber,
+          repo: `${owner}/${repo}`,
+          issuesSaved: analysisResult.issues.length,
+        });
+      } catch (dbError) {
+        logger.error('Failed to save PR data to database', {
+          error: dbError instanceof Error ? dbError.message : String(dbError),
+          stack: dbError instanceof Error ? dbError.stack : undefined,
+          prNumber: pullNumber,
+          repo: `${owner}/${repo}`,
+        });
+      }
     } catch (error) {
       logger.error('Failed to process pull request', {
         deliveryId: event.deliveryId,

@@ -21,6 +21,7 @@
     "@octokit/app": "^16.1.2",
     "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",
+    "@prisma/client": "^5.22.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
@@ -29,6 +30,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
     "parse-diff": "^0.12.0",
+    "prisma": "^5.22.0",
     "winston": "^3.14.2",
     "zod": "^3.23.8"
   },
