@@ -9,3 +9,4 @@ coverage
 
 server/src/**/*.js
 server/dist/
+dist/
