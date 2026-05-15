@@ -77,7 +77,7 @@ export class DatabaseService {
 
   async upsertRepository(params: UpsertRepositoryParams): Promise<Repository> {
     const repository = await prisma.repository.upsert({
-      where: { githubRepoId: params.githubRepoId },
+      where: { githubRepoId: BigInt(params.githubRepoId) },
       update: {
         name: params.name,
         fullName: params.fullName,
@@ -85,7 +85,7 @@ export class DatabaseService {
         updatedAt: new Date(),
       },
       create: {
-        githubRepoId: params.githubRepoId,
+        githubRepoId: BigInt(params.githubRepoId),
         name: params.name,
         fullName: params.fullName,
         private: params.private,
@@ -107,12 +107,12 @@ export class DatabaseService {
       },
       update: {
         avatarUrl: params.avatarUrl,
-        githubUserId: params.githubUserId,
+        githubUserId: BigInt(params.githubUserId),
         updatedAt: new Date(),
       },
       create: {
         githubLogin: params.githubLogin,
-        githubUserId: params.githubUserId,
+        githubUserId: BigInt(params.githubUserId),
         avatarUrl: params.avatarUrl,
         organizationId: params.organizationId,
       },
@@ -126,7 +126,7 @@ export class DatabaseService {
     const pullRequest = await prisma.pullRequest.upsert({
       where: {
         githubPrId_repositoryId: {
-          githubPrId: params.githubPrId,
+          githubPrId: BigInt(params.githubPrId),
           repositoryId: params.repositoryId,
         },
       },
@@ -140,7 +140,7 @@ export class DatabaseService {
         updatedAt: new Date(),
       },
       create: {
-        githubPrId: params.githubPrId,
+        githubPrId: BigInt(params.githubPrId),
         prNumber: params.prNumber,
         title: params.title,
         headSha: params.headSha,

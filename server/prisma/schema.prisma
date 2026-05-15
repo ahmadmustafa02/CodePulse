@@ -23,7 +23,7 @@ model Organization {
 
 model Repository {
   id             String   @id @default(cuid())
-  githubRepoId   Int      @unique
+  githubRepoId   BigInt   @unique
   name           String
   fullName       String   @unique
   private        Boolean  @default(false)
@@ -38,7 +38,7 @@ model Repository {
 model Developer {
   id             String   @id @default(cuid())
   githubLogin    String
-  githubUserId   Int
+  githubUserId   BigInt
   avatarUrl      String?
   organizationId String
   createdAt      DateTime @default(now())
@@ -53,7 +53,7 @@ model Developer {
 
 model PullRequest {
   id             String   @id @default(cuid())
-  githubPrId     Int
+  githubPrId     BigInt
   prNumber       Int
   title          String
   headSha        String
