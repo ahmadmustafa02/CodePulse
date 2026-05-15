@@ -19,6 +19,11 @@ const envSchema = z.object({
   GITHUB_CLIENT_SECRET: z.string().min(1, 'GITHUB_CLIENT_SECRET is required'),
   GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
+  DIGEST_FROM_EMAIL: z.string().email('DIGEST_FROM_EMAIL must be a valid email address'),
+  DIGEST_CRON_SECRET: z
+    .string()
+    .min(20, 'DIGEST_CRON_SECRET must be at least 20 characters'),
 });
 
 const parsed = envSchema.safeParse(process.env);

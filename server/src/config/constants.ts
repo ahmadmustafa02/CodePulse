@@ -67,3 +67,13 @@ export const GITHUB_REVIEW_SIDE_RIGHT = 'RIGHT';
 
 export const GROQ_TOOL_NAME = 'report_code_issues';
 export const CHARS_PER_ESTIMATED_TOKEN = 4;
+
+export const DIGEST_SECRET_HEADER = 'x-digest-secret';
+export const ERROR_CODE_INVALID_DIGEST_SECRET = 'INVALID_DIGEST_SECRET';
+export const DIGEST_WEEK_DAYS = 7;
+export const DIGEST_TOP_FILES_LIMIT = 3;
+export const DIGEST_PLACEHOLDER_EMAIL_DOMAIN = 'placeholder.dev';
+export const HTTP_STATUS_OK = 200;
+
+export const DIGEST_TRIGGER_ROUTE = '/trigger';
+export const DIGEST_HEALTH_ROUTE = '/health';

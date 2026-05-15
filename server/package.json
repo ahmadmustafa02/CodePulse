@@ -31,6 +31,7 @@
     "jsonwebtoken": "^9.0.3",
     "parse-diff": "^0.12.0",
     "prisma": "^5.22.0",
+    "resend": "^6.12.3",
     "winston": "^3.14.2",
     "zod": "^3.23.8"
   },
