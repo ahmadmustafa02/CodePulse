@@ -1,7 +1,8 @@
 /** Processes validated GitHub webhook events asynchronously after HTTP acknowledgment. */
 
-import { LOG_GITHUB_COMMENTS_PHASE_PLACEHOLDER, PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
+import { PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
 import type { WebhookEvent } from '../types/github';
+import { githubCommentService } from './githubCommentService';
 import { githubDiffService } from './githubDiffService';
 import { groqAnalysisService } from './groqAnalysisService';
 import logger from '../utils/logger';
@@ -125,11 +126,21 @@ export class WebhookProcessor {
         })),
       });
 
-      logger.info(LOG_GITHUB_COMMENTS_PHASE_PLACEHOLDER, {
+      await githubCommentService.postReview({
+        installationId,
+        owner,
+        repo,
+        pullNumber,
+        headSha,
+        analysisResult,
+      });
+
+      logger.info('PR review pipeline complete', {
         deliveryId: event.deliveryId,
         prNumber: pullNumber,
         repo: `${owner}/${repo}`,
         issuesFound: analysisResult.issues.length,
+        reviewPosted: true,
       });
     } catch (error) {
       logger.error('Failed to process pull request', {

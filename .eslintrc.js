@@ -10,7 +10,14 @@ module.exports = {
     node: true,
     es2022: true,
   },
-  ignorePatterns: ['node_modules/', 'dist/', '**/dist/', 'coverage/', '.nyc_output/'],
+  ignorePatterns: [
+    'node_modules/',
+    'dist/',
+    '**/dist/',
+    'coverage/',
+    '.nyc_output/',
+    '**/testCode.ts',
+  ],
   parser: require.resolve('@typescript-eslint/parser', { paths: [serverDir] }),
   parserOptions: {
     ecmaVersion: 2022,

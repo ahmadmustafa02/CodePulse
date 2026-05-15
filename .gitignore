@@ -6,3 +6,6 @@ dist
 *.log
 coverage
 .nyc_output
+
+server/src/**/*.js
+server/dist/

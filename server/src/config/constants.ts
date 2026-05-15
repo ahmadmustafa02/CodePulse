@@ -9,6 +9,7 @@ export const HTTP_STATUS_BAD_REQUEST = 400;
 export const HTTP_STATUS_UNAUTHORIZED = 401;
 export const HTTP_STATUS_ACCEPTED = 202;
 export const HTTP_STATUS_NOT_IMPLEMENTED = 501;
+export const HTTP_STATUS_UNPROCESSABLE_ENTITY = 422;
 export const HTTP_STATUS_INTERNAL_SERVER_ERROR = 500;
 
 export const ERROR_CODE_VALIDATION = 'VALIDATION_ERROR';
@@ -61,8 +62,8 @@ export const SKIPPABLE_FILE_PATTERNS = [
   'coverage/',
 ] as const;
 
-export const LOG_GITHUB_COMMENTS_PHASE_PLACEHOLDER =
-  'GitHub inline comments would be posted here — Phase 5 placeholder';
+export const GITHUB_REVIEW_EVENT_COMMENT = 'COMMENT';
+export const GITHUB_REVIEW_SIDE_RIGHT = 'RIGHT';
 
 export const GROQ_TOOL_NAME = 'report_code_issues';
 export const CHARS_PER_ESTIMATED_TOKEN = 4;
