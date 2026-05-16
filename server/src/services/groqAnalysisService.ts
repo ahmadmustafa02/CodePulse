@@ -1,4 +1,4 @@
-/** Groq-powered AI code review: analyzes parsed diffs and returns structured issues. */
+/** Groq-powered AI code review: triage pass plus chunked deep analysis of parsed diffs. */
 
 import crypto from 'crypto';
 import Groq from 'groq-sdk';
@@ -7,7 +7,10 @@ import {
   GROQ_MAX_COMPLETION_TOKENS,
   GROQ_MODEL,
   GROQ_TOOL_NAME,
+  MAX_DIFF_CHUNK_CHAR_LIMIT,
   MAX_ISSUES_PER_PR,
+  TRIAGE_MAX_COMPLETION_TOKENS,
+  TRIAGE_MAX_FILES,
 } from '../config/constants';
 import { env } from '../config/env';
 import type {
@@ -16,8 +19,12 @@ import type {
   IssueCategory,
   IssueSeverity,
 } from '../types/analysis';
-import type { ParsedDiff } from '../types/diff';
-import { countReviewableLines, formatDiffForPrompt } from '../utils/diffFormatter';
+import type { ParsedDiff, ParsedFile, ParsedFileStatus } from '../types/diff';
+import {
+  countReviewableLines,
+  formatDiffForPrompt,
+  getReviewableFiles,
+} from '../utils/diffFormatter';
 import logger from '../utils/logger';
 
 const ISSUE_CATEGORIES = [
@@ -52,6 +59,13 @@ const SEVERITY_ORDER: Record<IssueSeverity, number> = {
   high: 1,
   medium: 2,
   low: 3,
+};
+
+type TriageFileInput = {
+  filename: string;
+  additions: number;
+  deletions: number;
+  status: ParsedFileStatus;
 };
 
 const codeReviewTool = {
@@ -130,6 +144,9 @@ RULES:
 - If the code looks correct and safe, return an empty issues array
 - Do not invent issues that aren't clearly present in the code`;
 
+const TRIAGE_SYSTEM_PROMPT =
+  'You are a code review triage assistant. Return only a valid JSON array of filenames, nothing else.';
+
 function isIssueCategory(value: string): value is IssueCategory {
   return (ISSUE_CATEGORIES as readonly string[]).includes(value);
 }
@@ -183,6 +200,144 @@ function buildEmptyResult(parsedDiff: ParsedDiff): AnalysisResult {
   };
 }
 
+/** Builds the triage user prompt listing PR metadata and changed files. */
+function buildTriagePrompt(params: {
+  prTitle: string;
+  prDescription: string;
+  files: TriageFileInput[];
+}): string {
+  const description = params.prDescription.trim() || '(none)';
+  const fileLines = params.files
+    .map((f) => `- ${f.filename} (+${f.additions} -${f.deletions})`)
+    .join('\n');
+
+  return `PR Title: ${params.prTitle}
+PR Description: ${description}
+
+Changed files:
+${fileLines}
+
+Return a JSON array of filenames ranked by review priority.
+Focus on files most likely to contain bugs, security issues, or logic errors.
+Skip generated files, lock files, style files, test files.
+Return maximum ${TRIAGE_MAX_FILES} filenames.`;
+}
+
+/** Extracts a JSON string array from model output, tolerating markdown wrappers. */
+function parseTriageFilenames(content: string): string[] | null {
+  const trimmed = content.trim();
+
+  const tryParse = (text: string): string[] | null => {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((entry) => typeof entry === 'string')
+      ) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const direct = tryParse(trimmed);
+  if (direct) {
+    return direct;
+  }
+
+  const arrayMatch = trimmed.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    return tryParse(arrayMatch[0]);
+  }
+
+  return null;
+}
+
+/** Returns top files by addition count when AI triage is unavailable. */
+function fallbackTriageFilenames(files: TriageFileInput[]): string[] {
+  return [...files]
+    .sort((a, b) => b.additions - a.additions)
+    .slice(0, TRIAGE_MAX_FILES)
+    .map((f) => f.filename);
+}
+
+/** Orders reviewable files according to the triage-ranked filename list. */
+function selectFilesForReview(
+  reviewableFiles: ParsedFile[],
+  prioritizedFilenames: string[],
+): ParsedFile[] {
+  const byName = new Map(reviewableFiles.map((f) => [f.filename, f]));
+  const selected: ParsedFile[] = [];
+
+  for (const filename of prioritizedFilenames) {
+    const file = byName.get(filename);
+    if (file) {
+      selected.push(file);
+    }
+    if (selected.length >= TRIAGE_MAX_FILES) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+/** Splits a formatted diff into chunks under the character limit on file boundaries. */
+function splitFormattedDiffIntoChunks(formatted: string, maxChars: number): string[] {
+  if (formatted.length <= maxChars) {
+    return [formatted];
+  }
+
+  const sections = formatted.split(/\n\n(?=== FILE:)/);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const section of sections) {
+    const piece = current.length > 0 ? `\n\n${section}` : section;
+
+    if (piece.length > maxChars) {
+      if (current.length > 0) {
+        chunks.push(current);
+        current = '';
+      }
+      chunks.push(section);
+      continue;
+    }
+
+    if (current.length + piece.length > maxChars && current.length > 0) {
+      chunks.push(current);
+      current = section;
+    } else {
+      current = current.length > 0 ? `${current}\n\n${section}` : section;
+    }
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks.length > 0 ? chunks : [formatted];
+}
+
+/** Removes duplicate issues that share the same file and line. */
+function dedupeIssues(issues: DetectedIssue[]): DetectedIssue[] {
+  const seen = new Set<string>();
+  const result: DetectedIssue[] = [];
+
+  for (const issue of issues) {
+    const key = `${issue.file}:${issue.line}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(issue);
+  }
+
+  return result;
+}
+
 export class GroqAnalysisService {
   private readonly groq: Groq;
 
@@ -190,13 +345,166 @@ export class GroqAnalysisService {
     this.groq = new Groq({ apiKey: env.GROQ_API_KEY });
   }
 
+  /** Ranks changed files by review priority using a lightweight Groq completion. */
+  private async triageFiles(params: {
+    prTitle: string;
+    prDescription: string;
+    files: TriageFileInput[];
+  }): Promise<string[]> {
+    if (params.files.length === 0) {
+      return [];
+    }
+
+    if (params.files.length <= TRIAGE_MAX_FILES) {
+      return params.files.map((f) => f.filename);
+    }
+
+    const prompt = buildTriagePrompt(params);
+
+    try {
+      const response = await this.groq.chat.completions.create({
+        model: GROQ_MODEL,
+        max_tokens: TRIAGE_MAX_COMPLETION_TOKENS,
+        messages: [
+          { role: 'system', content: TRIAGE_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('Triage response had no content');
+      }
+
+      const parsed = parseTriageFilenames(content);
+      if (!parsed || parsed.length === 0) {
+        throw new Error('Triage response was not a valid JSON filename array');
+      }
+
+      const knownFilenames = new Set(params.files.map((f) => f.filename));
+      const selected = parsed
+        .filter((name) => knownFilenames.has(name))
+        .slice(0, TRIAGE_MAX_FILES);
+
+      if (selected.length === 0) {
+        throw new Error('Triage returned no known filenames');
+      }
+
+      logger.info('Triage complete', {
+        totalFiles: params.files.length,
+        selectedFiles: selected.length,
+        prTitle: params.prTitle,
+      });
+
+      return selected;
+    } catch (error) {
+      logger.warn('Triage failed, falling back to additions sort', {
+        prTitle: params.prTitle,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const fallback = fallbackTriageFilenames(params.files);
+      logger.info('Triage complete', {
+        totalFiles: params.files.length,
+        selectedFiles: fallback.length,
+        prTitle: params.prTitle,
+      });
+      return fallback;
+    }
+  }
+
+  /** Runs tool-calling Groq analysis on a single formatted diff chunk. */
+  private async analyzeChunk(
+    formattedChunk: string,
+    parsedDiff: ParsedDiff,
+  ): Promise<{ issues: DetectedIssue[]; tokensUsed: number }> {
+    const response = await this.groq.chat.completions.create({
+      model: GROQ_MODEL,
+      max_tokens: GROQ_MAX_COMPLETION_TOKENS,
+      tools: [codeReviewTool],
+      tool_choice: { type: 'function', function: { name: GROQ_TOOL_NAME } },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `Review this pull request diff:\n\n${formattedChunk}`,
+        },
+      ],
+    });
+
+    const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.type !== 'function') {
+      throw new Error('Groq did not return a tool call response');
+    }
+
+    let parsedResponse: unknown;
+    try {
+      parsedResponse = JSON.parse(toolCall.function.arguments);
+    } catch {
+      logger.error('Failed to parse Groq tool call response', {
+        rawArguments: toolCall.function.arguments,
+        repo: parsedDiff.repo,
+        prNumber: parsedDiff.prNumber,
+      });
+      throw new Error('Failed to parse Groq tool call response');
+    }
+
+    const validated = toolResponseSchema.safeParse(parsedResponse);
+    if (!validated.success) {
+      logger.error('Groq tool call response failed validation', {
+        issues: validated.error.issues,
+        repo: parsedDiff.repo,
+        prNumber: parsedDiff.prNumber,
+      });
+      throw new Error('Failed to parse Groq tool call response');
+    }
+
+    const issues = validated.data.issues
+      .map((raw) => mapRawIssue(raw))
+      .filter((issue): issue is DetectedIssue => issue !== null);
+
+    return {
+      issues,
+      tokensUsed: response.usage?.total_tokens ?? 0,
+    };
+  }
+
   async analyzeDiff(parsedDiff: ParsedDiff): Promise<AnalysisResult> {
     try {
-      const formattedDiff = formatDiffForPrompt(parsedDiff);
-      const reviewableLines = countReviewableLines(parsedDiff);
+      const reviewableFiles = getReviewableFiles(parsedDiff);
+
+      if (reviewableFiles.length === 0) {
+        logger.info('No reviewable lines in diff, skipping analysis', {
+          repo: parsedDiff.repo,
+          prNumber: parsedDiff.prNumber,
+        });
+        return buildEmptyResult(parsedDiff);
+      }
+
+      const prioritizedFilenames = await this.triageFiles({
+        prTitle: parsedDiff.prTitle,
+        prDescription: parsedDiff.prDescription,
+        files: reviewableFiles.map((f) => ({
+          filename: f.filename,
+          additions: f.additions,
+          deletions: f.deletions,
+          status: f.status,
+        })),
+      });
+
+      logger.info('Two-pass review started', {
+        totalFiles: parsedDiff.files.length,
+        prioritizedFiles: prioritizedFilenames.length,
+        repo: parsedDiff.repo,
+        prNumber: parsedDiff.prNumber,
+      });
+
+      const filesToReview = selectFilesForReview(reviewableFiles, prioritizedFilenames);
+      const reviewableLines = countReviewableLines(filesToReview);
+      const formattedDiff = formatDiffForPrompt(parsedDiff, filesToReview);
 
       if (reviewableLines === 0 || formattedDiff.length === 0) {
-        logger.info('No reviewable lines in diff, skipping analysis', {
+        logger.info('No reviewable lines in prioritized files, skipping analysis', {
           repo: parsedDiff.repo,
           prNumber: parsedDiff.prNumber,
           reviewableLines,
@@ -204,59 +512,51 @@ export class GroqAnalysisService {
         return buildEmptyResult(parsedDiff);
       }
 
-      logger.info('Sending diff to Groq for analysis', {
+      const chunks =
+        formattedDiff.length > MAX_DIFF_CHUNK_CHAR_LIMIT
+          ? splitFormattedDiffIntoChunks(formattedDiff, MAX_DIFF_CHUNK_CHAR_LIMIT)
+          : [formattedDiff];
+
+      const allIssues: DetectedIssue[] = [];
+      let tokensUsed = 0;
+
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        try {
+          const { issues, tokensUsed: chunkTokens } = await this.analyzeChunk(
+            chunks[chunkIndex],
+            parsedDiff,
+          );
+          tokensUsed += chunkTokens;
+          allIssues.push(...issues);
+
+          logger.info('Chunk analysis', {
+            chunkIndex,
+            totalChunks: chunks.length,
+            issuesInChunk: issues.length,
+            repo: parsedDiff.repo,
+            prNumber: parsedDiff.prNumber,
+          });
+        } catch (chunkError) {
+          logger.error('Chunk analysis failed', {
+            chunkIndex,
+            totalChunks: chunks.length,
+            repo: parsedDiff.repo,
+            prNumber: parsedDiff.prNumber,
+            error:
+              chunkError instanceof Error ? chunkError.message : String(chunkError),
+          });
+        }
+      }
+
+      const deduped = dedupeIssues(allIssues);
+      const cappedIssues = sortBySeverity(deduped).slice(0, MAX_ISSUES_PER_PR);
+
+      logger.info('Final merged results', {
+        totalIssues: allIssues.length,
+        afterDedup: deduped.length,
         repo: parsedDiff.repo,
         prNumber: parsedDiff.prNumber,
-        reviewableLines,
       });
-
-      const response = await this.groq.chat.completions.create({
-        model: GROQ_MODEL,
-        max_tokens: GROQ_MAX_COMPLETION_TOKENS,
-        tools: [codeReviewTool],
-        tool_choice: { type: 'function', function: { name: GROQ_TOOL_NAME } },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `Review this pull request diff:\n\n${formattedDiff}`,
-          },
-        ],
-      });
-
-      const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-      if (!toolCall || toolCall.type !== 'function') {
-        throw new Error('Groq did not return a tool call response');
-      }
-
-      let parsedResponse: unknown;
-      try {
-        parsedResponse = JSON.parse(toolCall.function.arguments);
-      } catch {
-        logger.error('Failed to parse Groq tool call response', {
-          rawArguments: toolCall.function.arguments,
-          repo: parsedDiff.repo,
-          prNumber: parsedDiff.prNumber,
-        });
-        throw new Error('Failed to parse Groq tool call response');
-      }
-
-      const validated = toolResponseSchema.safeParse(parsedResponse);
-      if (!validated.success) {
-        logger.error('Groq tool call response failed validation', {
-          issues: validated.error.issues,
-          repo: parsedDiff.repo,
-          prNumber: parsedDiff.prNumber,
-        });
-        throw new Error('Failed to parse Groq tool call response');
-      }
-
-      const issues = validated.data.issues
-        .map((raw) => mapRawIssue(raw))
-        .filter((issue): issue is DetectedIssue => issue !== null);
-
-      const cappedIssues = sortBySeverity(issues).slice(0, MAX_ISSUES_PER_PR);
-      const tokensUsed = response.usage?.total_tokens ?? 0;
 
       logger.info('Groq analysis complete', {
         repo: parsedDiff.repo,
@@ -264,6 +564,7 @@ export class GroqAnalysisService {
         issueCount: cappedIssues.length,
         tokensUsed,
         model: GROQ_MODEL,
+        chunksAnalyzed: chunks.length,
       });
 
       return {
@@ -271,7 +572,7 @@ export class GroqAnalysisService {
         repo: parsedDiff.repo,
         headSha: parsedDiff.headSha,
         issues: cappedIssues,
-        filesAnalyzed: parsedDiff.files.filter((f) => f.additions > 0).length,
+        filesAnalyzed: filesToReview.length,
         analyzedAt: new Date().toISOString(),
         modelUsed: GROQ_MODEL,
         tokensUsed,
@@ -283,8 +584,7 @@ export class GroqAnalysisService {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Groq analysis failed: ${message}`);
+      return buildEmptyResult(parsedDiff);
     }
   }
 }

@@ -1,10 +1,6 @@
-/** Formats ParsedDiff into a Groq-ready prompt string with truncation and filtering. */
+/** Formats ParsedDiff into a Groq-ready prompt string with skippable-file filtering. */
 
-import {
-  MAX_DIFF_CHAR_LIMIT,
-  MAX_FILE_SIZE_LINES,
-  SKIPPABLE_FILE_PATTERNS,
-} from '../config/constants';
+import { MAX_FILE_SIZE_LINES, SKIPPABLE_FILE_PATTERNS } from '../config/constants';
 import type { ParsedChange, ParsedDiff, ParsedFile } from '../types/diff';
 
 function matchesSkippablePattern(filename: string, pattern: string): boolean {
@@ -22,7 +18,8 @@ function countFileLines(file: ParsedFile): number {
   return file.chunks.reduce((sum, chunk) => sum + chunk.changes.length, 0);
 }
 
-function getReviewableFiles(parsedDiff: ParsedDiff): ParsedFile[] {
+/** Returns files eligible for review after skippable-pattern and size filtering. */
+export function getReviewableFiles(parsedDiff: ParsedDiff): ParsedFile[] {
   return parsedDiff.files.filter(
     (file) =>
       !isSkippableFile(file.filename) &&
@@ -53,8 +50,8 @@ function formatFileSection(file: ParsedFile): string {
   return lines.join('\n');
 }
 
-export function countReviewableLines(parsedDiff: ParsedDiff): number {
-  return getReviewableFiles(parsedDiff).reduce(
+export function countReviewableLines(files: ParsedFile[]): number {
+  return files.reduce(
     (total, file) =>
       total +
       file.chunks.reduce(
@@ -66,34 +63,14 @@ export function countReviewableLines(parsedDiff: ParsedDiff): number {
   );
 }
 
-export function formatDiffForPrompt(parsedDiff: ParsedDiff): string {
-  const reviewableFiles = getReviewableFiles(parsedDiff);
-  const sections: string[] = [];
-  let charCount = 0;
-  let truncatedCount = 0;
-
-  for (const file of reviewableFiles) {
-    const section = formatFileSection(file);
-    const sectionWithBreak = sections.length > 0 ? `\n\n${section}` : section;
-    const projectedLength = charCount + sectionWithBreak.length;
-
-    if (projectedLength > MAX_DIFF_CHAR_LIMIT) {
-      truncatedCount = reviewableFiles.length - sections.length;
-      break;
-    }
-
-    sections.push(section);
-    charCount = projectedLength;
-  }
+/** Formats the given files (or all reviewable files) into a prompt-ready diff string. */
+export function formatDiffForPrompt(parsedDiff: ParsedDiff, files?: ParsedFile[]): string {
+  const reviewableFiles = files ?? getReviewableFiles(parsedDiff);
+  const sections = reviewableFiles.map((file) => formatFileSection(file));
 
   if (sections.length === 0) {
     return '';
   }
 
-  let result = sections.join('\n\n');
-  if (truncatedCount > 0) {
-    result += `\n\n... ${truncatedCount} more files truncated due to size limit`;
-  }
-
-  return result;
+  return sections.join('\n\n');
 }

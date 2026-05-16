@@ -33,6 +33,8 @@ export type ParsedDiff = {
   prNumber: number;
   repo: string;
   headSha: string;
+  prTitle: string;
+  prDescription: string;
   files: ParsedFile[];
   totalAdditions: number;
   totalDeletions: number;

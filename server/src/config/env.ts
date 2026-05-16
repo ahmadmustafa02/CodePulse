@@ -15,8 +15,9 @@ const envSchema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().min(20, 'GITHUB_WEBHOOK_SECRET must be at least 20 characters'),
   GITHUB_APP_ID: z.string().min(1, 'GITHUB_APP_ID is required'),
   GITHUB_PRIVATE_KEY: z.string().min(1, 'GITHUB_PRIVATE_KEY is required'),
-  GITHUB_CLIENT_ID: z.string().min(1, 'GITHUB_CLIENT_ID is required'),
-  GITHUB_CLIENT_SECRET: z.string().min(1, 'GITHUB_CLIENT_SECRET is required'),
+  GITHUB_OAUTH_CLIENT_ID: z.string().min(1, 'GITHUB_OAUTH_CLIENT_ID is required'),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1, 'GITHUB_OAUTH_CLIENT_SECRET is required'),
+  GITHUB_OAUTH_CALLBACK_URL: z.string().url('GITHUB_OAUTH_CALLBACK_URL must be a valid URL'),
   GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
@@ -24,6 +25,8 @@ const envSchema = z.object({
   DIGEST_CRON_SECRET: z
     .string()
     .min(20, 'DIGEST_CRON_SECRET must be at least 20 characters'),
+  AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
+  WEB_APP_URL: z.string().url('WEB_APP_URL must be a valid URL'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -35,7 +38,7 @@ if (!parsed.success) {
     fieldErrors: flattened.fieldErrors,
     formErrors: flattened.formErrors,
   };
-  process.stderr.write(`${JSON.stringify(payload, null, 2)}\n`);
+  process.stderr.write(JSON.stringify(payload, null, 2) + '\n');
   process.exit(1);
 }
 

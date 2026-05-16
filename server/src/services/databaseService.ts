@@ -1,6 +1,6 @@
 /** Database service layer: all Prisma operations for organizations, PRs, and issues. */
 
-import type { Developer, Issue, Organization, PullRequest, Repository } from '@prisma/client';
+import type { Developer, Issue, Organization, PullRequest, Repository, User } from '@prisma/client';
 import logger from '../utils/logger';
 import { prisma } from './prismaService';
 
@@ -56,7 +56,51 @@ type DeveloperPattern = {
   count: number;
 };
 
+type UpsertUserParams = {
+  githubLogin: string;
+  githubUserId: bigint;
+  avatarUrl?: string | null;
+  email?: string | null;
+};
+
 export class DatabaseService {
+  async upsertUser(params: UpsertUserParams): Promise<User> {
+    const user = await prisma.user.upsert({
+      where: { githubUserId: params.githubUserId },
+      update: {
+        githubLogin: params.githubLogin,
+        avatarUrl: params.avatarUrl ?? null,
+        email: params.email ?? null,
+        updatedAt: new Date(),
+      },
+      create: {
+        githubLogin: params.githubLogin,
+        githubUserId: params.githubUserId,
+        avatarUrl: params.avatarUrl ?? null,
+        email: params.email ?? null,
+      },
+    });
+
+    logger.info('User upserted', { githubLogin: user.githubLogin, userId: user.id });
+    return user;
+  }
+
+  async findUserByGithubUserId(githubUserId: bigint): Promise<User | null> {
+    return prisma.user.findUnique({ where: { githubUserId } });
+  }
+
+  async updateUserInstallationId(githubUserId: bigint, installationId: number): Promise<User> {
+    const user = await prisma.user.update({
+      where: { githubUserId },
+      data: { installationId, updatedAt: new Date() },
+    });
+    logger.info('User installation ID updated', {
+      githubLogin: user.githubLogin,
+      installationId,
+    });
+    return user;
+  }
+
   async upsertOrganization(params: UpsertOrganizationParams): Promise<Organization> {
     const organization = await prisma.organization.upsert({
       where: { githubInstallationId: params.githubInstallationId },
@@ -73,6 +117,36 @@ export class DatabaseService {
     });
 
     return organization;
+  }
+
+  async syncOrganizationInstallationId(installationId: number): Promise<Organization> {
+    const existing = await prisma.organization.findFirst({
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existing) {
+      if (existing.githubInstallationId === installationId) {
+        return existing;
+      }
+
+      const organization = await prisma.organization.update({
+        where: { id: existing.id },
+        data: { githubInstallationId: installationId, updatedAt: new Date() },
+      });
+
+      logger.info('Organization installation ID updated', {
+        organizationId: organization.id,
+        previousInstallationId: existing.githubInstallationId,
+        installationId,
+      });
+
+      return organization;
+    }
+
+    return this.upsertOrganization({
+      githubInstallationId: installationId,
+      name: 'unknown',
+    });
   }
 
   async upsertRepository(params: UpsertRepositoryParams): Promise<Repository> {

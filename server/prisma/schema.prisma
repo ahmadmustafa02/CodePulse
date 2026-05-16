@@ -103,3 +103,14 @@ model DigestLog {
   weekStart      DateTime
   weekEnd        DateTime
 }
+
+model User {
+  id             String   @id @default(cuid())
+  githubLogin    String   @unique
+  githubUserId   BigInt   @unique
+  avatarUrl      String?
+  email          String?
+  installationId Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

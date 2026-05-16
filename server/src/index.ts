@@ -8,7 +8,6 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import {
   API_PREFIX,
-  RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
   SHUTDOWN_SIGNALS,
 } from './config/constants';
@@ -18,16 +17,21 @@ import { apiRouter } from './routes/index';
 import logger from './utils/logger';
 
 const app = express();
-app.set('trust proxy', 1)
+app.set('trust proxy', 1);
 
 app.use(helmet());
-app.use(cors());
+app.use(
+  cors({
+    origin: [env.WEB_APP_URL, 'http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173'],
+    credentials: true,
+  }),
+);
 // express.json() is NOT applied globally: GitHub HMAC verification requires the raw
 // request body bytes on /webhooks. JSON parsing is mounted per-route in routes/index.ts.
 app.use(
   rateLimit({
     windowMs: RATE_LIMIT_WINDOW_MS,
-    max: RATE_LIMIT_MAX_REQUESTS,
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
   }),

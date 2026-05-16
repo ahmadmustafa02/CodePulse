@@ -92,6 +92,8 @@ export class WebhookProcessor {
         repo,
         pullNumber,
         headSha,
+        prTitle: payload.pull_request.title,
+        prDescription: payload.pull_request.body ?? '',
       });
 
       logger.info('Diff parsed successfully', {

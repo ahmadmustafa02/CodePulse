@@ -20,6 +20,8 @@ type FetchAndParseParams = {
   repo: string;
   pullNumber: number;
   headSha: string;
+  prTitle: string;
+  prDescription: string;
 };
 
 type ParseDiffFile = ReturnType<typeof parseDiff>[number];
@@ -155,7 +157,7 @@ export class GitHubDiffService {
   }
 
   async fetchAndParseDiff(params: FetchAndParseParams): Promise<ParsedDiff> {
-    const { installationId, owner, repo, pullNumber, headSha } = params;
+    const { installationId, owner, repo, pullNumber, headSha, prTitle, prDescription } = params;
     const token = await githubAuthService.getInstallationToken(installationId);
     const octokit = new Octokit({ auth: token });
 
@@ -177,6 +179,8 @@ export class GitHubDiffService {
       prNumber: pullNumber,
       repo: `${owner}/${repo}`,
       headSha,
+      prTitle,
+      prDescription,
       files,
       totalAdditions,
       totalDeletions,

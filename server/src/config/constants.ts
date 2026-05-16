@@ -48,7 +48,10 @@ export const GROQ_MODEL = 'llama-3.3-70b-versatile';
 export const GROQ_MAX_COMPLETION_TOKENS = 4096;
 export const MAX_DIFF_TOKENS = 6000;
 export const MAX_DIFF_CHAR_LIMIT = MAX_DIFF_TOKENS * 4;
+export const MAX_DIFF_CHUNK_CHAR_LIMIT = 20000;
 export const MAX_ISSUES_PER_PR = 20;
+export const TRIAGE_MAX_FILES = 10;
+export const TRIAGE_MAX_COMPLETION_TOKENS = 500;
 export const MAX_FILE_SIZE_LINES = 500;
 export const SKIPPABLE_FILE_PATTERNS = [
   'package-lock.json',
