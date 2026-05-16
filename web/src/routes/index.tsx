@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { BookOpen, GitBranch, LineChart, Mail, ShieldCheck, Sparkles } from "lucide-react";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
 import { SiteNav } from "@/components/codepulse/site-nav";

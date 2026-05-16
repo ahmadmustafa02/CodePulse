@@ -1,19 +1,14 @@
-/** Prisma client singleton using the Neon HTTP driver adapter (no native query engine). */
+/** Prisma client singleton to avoid multiple instances during nodemon restarts in development. */
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaNeonHTTP } from '@prisma/adapter-neon';
-import { neon } from '@neondatabase/serverless';
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL!;
-  const sql = neon(connectionString);
-  const adapter = new PrismaNeonHTTP(sql);
-  return new PrismaClient({ adapter });
-}
-
-export const prisma = globalForPrisma.prisma || createPrismaClient();
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: ['error', 'warn'],
+  });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
