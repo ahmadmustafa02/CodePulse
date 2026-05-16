@@ -4,40 +4,11 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-export default defineConfig(async ({ command, mode }) => {
+export default defineConfig(({ mode }) => {
   const envDefine: Record<string, string> = {};
   const loadedEnv = loadEnv(mode, process.cwd(), "VITE_");
   for (const [key, value] of Object.entries(loadedEnv)) {
     envDefine[`import.meta.env.${key}`] = JSON.stringify(value);
-  }
-
-  const plugins = [
-    tailwindcss(),
-    tsconfigPaths({ projects: ["./tsconfig.json"] }),
-    tanstackStart({
-      importProtection: {
-        behavior: "error",
-        client: {
-          files: ["**/server/**"],
-          specifiers: ["server-only"],
-        },
-      },
-      server: { entry: "server" },
-    }),
-    react(),
-  ];
-
-  if (command === "build") {
-    try {
-      const { cloudflare } = await import("@cloudflare/vite-plugin");
-      plugins.push(
-        cloudflare({
-          viteEnvironment: { name: "ssr" },
-        }),
-      );
-    } catch {
-      // Cloudflare adapter optional for local builds
-    }
   }
 
   return {
@@ -55,7 +26,32 @@ export default defineConfig(async ({ command, mode }) => {
         "@tanstack/query-core",
       ],
     },
-    plugins,
+    plugins: [
+      tailwindcss(),
+      tsconfigPaths({ projects: ["./tsconfig.json"] }),
+      tanstackStart({
+        importProtection: {
+          behavior: "error",
+          client: {
+            files: ["**/server/**"],
+            specifiers: ["server-only"],
+          },
+        },
+        server: { entry: "server" },
+        prerender: {
+          enabled: true,
+          autoStaticPathsDiscovery: true,
+          crawlLinks: true,
+          failOnError: false,
+          pages: [{ path: "/login" }],
+        },
+      }),
+      react(),
+    ],
+    build: {
+      outDir: "dist",
+      emptyOutDir: true,
+    },
     server: {
       host: "::",
       port: 8080,
