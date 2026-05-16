@@ -1,1 +1,6 @@
 dist/
+
+# Commit generated Prisma client for Leapcell (parent node_modules ignore is overridden in root .gitignore)
+!node_modules/.prisma/
+!node_modules/.prisma/client/
+node_modules/.prisma/client/*.tmp*

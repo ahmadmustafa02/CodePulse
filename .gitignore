@@ -1,4 +1,9 @@
-node_modules
+node_modules/
+!server/node_modules/
+server/node_modules/*
+!server/node_modules/.prisma/
+server/node_modules/.prisma/*
+!server/node_modules/.prisma/client/
 dist
 .env
 *.env.local
