@@ -21,6 +21,15 @@
 
 ---
 
+<img width="1346" height="832" alt="codepulse2" src="https://github.com/user-attachments/assets/90b10f63-399c-4855-a402-863a86b9f4c4" />
+<img width="1357" height="882" alt="digest" src="https://github.com/user-attachments/assets/3658ee11-fc66-463c-9dee-d247a321ce85" />
+<img width="1474" height="896" alt="codepulsedashboard" src="https://github.com/user-attachments/assets/15b137d5-b2fe-43bb-80ae-049112fd7492" />
+
+
+
+
+---
+
 ## 🎯 The pitch
 
 > **CodeRabbit reviews your PR. CodePulse reviews your habits.**
