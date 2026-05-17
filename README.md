@@ -36,9 +36,8 @@
 
 Install once on GitHub, pick your repos, and open a pull request. CodePulse reviews the diff inline like a senior engineer would — pinned to exact lines, with severity labels — then quietly remembers every issue against the developer who wrote it.
 
-Every Sunday, each developer gets a personalized digest: *"You introduced 3 SQL injection patterns this week. Here's how to stop."*
+Every Week, each developer gets a personalized digest: *"You introduced 3 SQL injection patterns this week. Here's how to stop."*
 
-The learning loop is the product. The PR review is just the input.
 
 <div align="center">
 
@@ -55,7 +54,7 @@ The learning loop is the product. The PR review is just the input.
 | 🤖 **Automatic PR reviews** | Triggered on `opened`, `synchronize`, and `reopened`. Inline comments pinned to exact lines with **Critical / High / Medium / Low** severity labels. |
 | 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. Groq + Llama 3.3 70B with structured tool-calling returns typed JSON per issue. |
 | 📊 **Per-developer pattern tracking** | Every issue is stored against the developer who wrote it, across every PR, forever. The longer you use it, the sharper it gets. |
-| 📬 **Weekly personalized digests** | Sunday emails surface recurring mistakes per developer with concrete fixes. Powered by Resend. |
+| 📬 **Weekly personalized digests** | Weekly emails surface recurring mistakes per developer with concrete fixes. Powered by Resend. |
 | 📈 **Team dashboard** | PR volume, review latency, connected repos, severity trends, category breakdown, file-level hotspots. |
 | 🔒 **Multi-tenant isolation** | Scoped per GitHub App installation — each org's data is fully isolated. |
 | 🛡️ **Signed webhooks** | HMAC-SHA256 verification on every event. Lockfiles, minified assets, and generated files are skipped automatically. |
