@@ -96,9 +96,20 @@ The learning loop is the product. The PR review is just the input.
                                                         │
                                                         ▼
                                          ┌──────────────────────────┐
-                                         │  Sunday cron (Github Actions)   │
-                                         │  Aggregate → Resend      │
-                                         │  Personalized digest 📬  │
+                                         │ GitHub Actions (schedule)│
+                                         │ Weekly trigger           │
+                                         └─────────────┬────────────┘
+                                                       │
+                                                       ▼
+                                         ┌──────────────────────────┐
+                                         │ Digest API endpoint       │
+                                         │ Aggregate → Build digest  │
+                                         └─────────────┬────────────┘
+                                                       │
+                                                       ▼
+                                         ┌──────────────────────────┐
+                                         │ Email pipeline (Resend)  │
+                                         │                          │
                                          └──────────────────────────┘
 ```
 
