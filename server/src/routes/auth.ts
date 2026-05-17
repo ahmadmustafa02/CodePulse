@@ -82,7 +82,7 @@ authRouter.get('/installation/callback', async (req, res) => {
   try {
     const githubUserId = BigInt(session.githubUserId);
     const user = await databaseService.updateUserInstallationId(githubUserId, installationId);
-    await databaseService.syncOrganizationInstallationId(installationId);
+    await databaseService.ensureOrganizationForInstallation(installationId);
 
     setUserSessionCookie(res, toUserSession(user));
     logger.info('Installation linked to user', {

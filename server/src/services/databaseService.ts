@@ -119,33 +119,10 @@ export class DatabaseService {
     return organization;
   }
 
-  async syncOrganizationInstallationId(installationId: number): Promise<Organization> {
-    const existing = await prisma.organization.findFirst({
-      orderBy: { createdAt: 'asc' },
-    });
-
-    if (existing) {
-      if (existing.githubInstallationId === installationId) {
-        return existing;
-      }
-
-      const organization = await prisma.organization.update({
-        where: { id: existing.id },
-        data: { githubInstallationId: installationId, updatedAt: new Date() },
-      });
-
-      logger.info('Organization installation ID updated', {
-        organizationId: organization.id,
-        previousInstallationId: existing.githubInstallationId,
-        installationId,
-      });
-
-      return organization;
-    }
-
+  async ensureOrganizationForInstallation(installationId: number, name = 'unknown'): Promise<Organization> {
     return this.upsertOrganization({
       githubInstallationId: installationId,
-      name: 'unknown',
+      name,
     });
   }
 

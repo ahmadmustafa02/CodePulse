@@ -11,25 +11,12 @@ export async function getOrganizationIdByInstallationId(
     select: { id: true },
   });
 
-  if (organization) {
-    return organization.id;
+  if (!organization) {
+    logger.info('No organization for installation ID', { installationId });
+    return null;
   }
 
-  const fallback = await prisma.organization.findFirst({
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, githubInstallationId: true },
-  });
-
-  if (fallback) {
-    logger.warn('Organization not found for installation ID; using first org as fallback', {
-      requestedInstallationId: installationId,
-      fallbackInstallationId: fallback.githubInstallationId,
-      organizationId: fallback.id,
-    });
-    return fallback.id;
-  }
-
-  return null;
+  return organization.id;
 }
 
 export async function getDashboardStats(organizationId: string) {
