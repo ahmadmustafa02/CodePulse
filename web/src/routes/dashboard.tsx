@@ -144,6 +144,14 @@ function DashboardPage() {
         <div className="lg:col-span-2">
           {repos.isLoading || !repos.data ? (
             <ListSkeleton rows={4} />
+          ) : repos.data.length === 0 ? (
+            <Panel>
+              <h3 className="text-sm font-medium text-zinc-100">Connected repositories</h3>
+              <p className="mt-2 text-sm text-zinc-500">
+                No repositories yet. In GitHub, open your CodePulse app installation and confirm the
+                repos you want reviewed are selected, then refresh this page.
+              </p>
+            </Panel>
           ) : (
             <Panel padded={false}>
               <div className="border-b border-zinc-800/60 px-6 py-4">

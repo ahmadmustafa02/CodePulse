@@ -133,6 +133,7 @@ export class DatabaseService {
         name: params.name,
         fullName: params.fullName,
         private: params.private,
+        organizationId: params.organizationId,
         updatedAt: new Date(),
       },
       create: {
