@@ -119,13 +119,6 @@ export class DatabaseService {
     return organization;
   }
 
-  async ensureOrganizationForInstallation(installationId: number, name = 'unknown'): Promise<Organization> {
-    return this.upsertOrganization({
-      githubInstallationId: installationId,
-      name,
-    });
-  }
-
   async upsertRepository(params: UpsertRepositoryParams): Promise<Repository> {
     const repository = await prisma.repository.upsert({
       where: { githubRepoId: BigInt(params.githubRepoId) },
