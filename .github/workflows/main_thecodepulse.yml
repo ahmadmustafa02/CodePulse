@@ -21,8 +21,8 @@ jobs:
         working-directory: ./server
         run: |
           npm install
-          npx prisma generate
           npm run build --if-present
+          npx prisma generate
           npm run test --if-present
 
       - name: Upload artifact for deployment job
@@ -30,6 +30,8 @@ jobs:
         with:
           name: node-app
           path: ./server
+          include-hidden-files: true
+
 
   deploy:
     runs-on: ubuntu-latest
