@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/License-MIT-3DA639?style=for-the-badge)](LICENSE)
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
@@ -96,7 +96,7 @@ The learning loop is the product. The PR review is just the input.
                                                         │
                                                         ▼
                                          ┌──────────────────────────┐
-                                         │  Sunday cron (Railway)   │
+                                         │  Sunday cron (Github Actions)   │
                                          │  Aggregate → Resend      │
                                          │  Personalized digest 📬  │
                                          └──────────────────────────┘
@@ -125,7 +125,7 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 <td valign="top" width="33%">
 
 **Frontend**
-- Next.js · TypeScript
+- React · TypeScript
 - Tailwind CSS
 - Recharts
 - Vercel
@@ -136,7 +136,7 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 **Infrastructure**
 - GitHub App (webhook + bot)
 - GitHub OAuth (sign-in)
-- Railway cron (weekly trigger)
+- Scheduled digest trigger via GitHub Actions
 - HMAC-SHA256 signature verify
 
 </td>
@@ -247,7 +247,7 @@ npm run dev
 | `AUTH_SECRET` | Must match server `AUTH_SECRET` |
 | `AUTH_GITHUB_ID` | OAuth App client ID |
 | `AUTH_GITHUB_SECRET` | OAuth App client secret |
-| `NEXT_PUBLIC_API_URL` | API base URL (`http://localhost:3001/api/v1` locally) |
+| `VITE` | API base URL (`http://localhost:3001/api/v1` locally) |
 
 </details>
 
@@ -264,7 +264,7 @@ npm run lint
 npm run typecheck
 
 # ── Web ───────────────────────────────────
-npm run dev         # Next.js dev server
+npm run dev         # react dev server
 npm run build       # production build
 npm run lint
 ```
@@ -278,7 +278,7 @@ npm run lint
 | Frontend | **Vercel** |
 | API | **Azure App Service** |
 | Database | **Neon PostgreSQL** |
-| Cron | **Railway** |
+| Cron | **Github Actions** |
 
 > ⚠️ Webhooks must point to the **API host directly** — never the Vercel frontend URL.
 
