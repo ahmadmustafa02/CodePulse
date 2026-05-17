@@ -9,8 +9,21 @@ import type {
 import type { Severity } from "@/lib/severity";
 import { normalizeSeverity } from "@/lib/severity";
 
-export const apiBaseUrl =
-  import.meta.env.VITE_API_URL ?? "http://localhost:3001/api/v1";
+function resolveApiBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    const { hostname } = window.location;
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    if (!isLocal) {
+      return `${window.location.origin}/api/v1`;
+    }
+    if (fromEnv) return fromEnv;
+    return `${window.location.origin}/api/v1`;
+  }
+  return fromEnv ?? "http://localhost:3001/api/v1";
+}
+
+export const apiBaseUrl = resolveApiBaseUrl();
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {

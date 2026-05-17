@@ -73,7 +73,8 @@ export function AppShell({
   const sessionQ = useQuery({
     queryKey: ["session"],
     queryFn: fetchSession,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+    refetchOnMount: "always",
   });
 
   const session = sessionQ.data ?? null;

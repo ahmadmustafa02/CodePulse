@@ -2,6 +2,14 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://thecodepulse-b0ayhharhze8hjhp.southeastasia-01.azurewebsites.net/api/v1/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }

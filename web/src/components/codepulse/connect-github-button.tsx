@@ -1,4 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowRight, Github } from "lucide-react";
 import { fetchSession, isLoggedIn, startGitHubOAuth } from "@/lib/auth";
@@ -16,12 +17,16 @@ export function ConnectGitHubButton({
   showArrow = false,
 }: ConnectGitHubButtonProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
     setLoading(true);
     try {
-      const session = await fetchSession();
+      const session = await queryClient.fetchQuery({
+        queryKey: ["session"],
+        queryFn: fetchSession,
+      });
       if (isLoggedIn(session)) {
         await router.navigate({ to: "/dashboard" });
         return;

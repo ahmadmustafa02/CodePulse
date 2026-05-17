@@ -16,13 +16,39 @@ import { requestLogger } from './middleware/requestLogger';
 import { apiRouter } from './routes/index';
 import logger from './utils/logger';
 
+const LOCAL_ORIGINS = [
+  'http://localhost:8080',
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
+
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (origin === env.WEB_APP_URL) return true;
+  if (LOCAL_ORIGINS.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    if (url.hostname === 'getcodepulse.vercel.app') return true;
+    if (url.hostname.endsWith('.vercel.app')) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(
   cors({
-    origin: [env.WEB_APP_URL, 'http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173'],
+    origin(origin, callback) {
+      if (isAllowedCorsOrigin(origin)) {
+        callback(null, origin ?? true);
+        return;
+      }
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
     credentials: true,
   }),
 );

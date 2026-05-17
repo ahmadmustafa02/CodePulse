@@ -1,8 +1,8 @@
-import { Link, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+﻿import { Link, useRouter } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Github, LayoutDashboard, LogOut } from "lucide-react";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
-import { fetchSession, signOut, type Session } from "@/lib/auth";
+import { fetchSession, signOut } from "@/lib/auth";
 
 export function CodePulseMark({ to = "/" }: { to?: "/" | "/dashboard" }) {
   return (
@@ -16,16 +16,18 @@ export function CodePulseMark({ to = "/" }: { to?: "/" | "/dashboard" }) {
 }
 
 export function SiteNav() {
-  const [session, setSession] = useState<Session | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    void fetchSession().then(setSession);
-  }, []);
+  const sessionQ = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    staleTime: 60 * 1000,
+    refetchOnMount: "always",
+  });
+  const session = sessionQ.data ?? null;
 
   async function handleSignOut() {
     await signOut();
-    setSession(null);
+    await sessionQ.refetch();
     router.navigate({ to: "/", search: {} });
   }
 

@@ -1,12 +1,15 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { fetchSession } from "@/lib/auth";
 
 import appCss from "../styles.css?url";
 
@@ -121,11 +124,23 @@ function RootShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function SessionBootstrap() {
+  const queryClient = useQueryClient();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useEffect(() => {
+    void queryClient.prefetchQuery({ queryKey: ["session"], queryFn: fetchSession });
+  }, [queryClient, pathname]);
+
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <SessionBootstrap />
       <Outlet />
     </QueryClientProvider>
   );
