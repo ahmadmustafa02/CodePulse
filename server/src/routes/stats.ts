@@ -9,7 +9,6 @@ import {
   getReviews,
   getTeam,
 } from '../services/statsService';
-import { organizationLinkService } from '../services/organizationLinkService';
 import { getUserFromRequest } from '../services/sessionService';
 import logger from '../utils/logger';
 
@@ -47,15 +46,7 @@ async function handleStatsRequest<T>(
       return;
     }
 
-    let organizationId = await getOrganizationIdByInstallationId(session.installationId);
-
-    if (!organizationId) {
-      await organizationLinkService.tryReconnectOrphanedData(
-        session.installationId,
-        session.githubLogin,
-      );
-      organizationId = await getOrganizationIdByInstallationId(session.installationId);
-    }
+    const organizationId = await getOrganizationIdByInstallationId(session.installationId);
 
     if (!organizationId) {
       logger.warn('Stats request: no organization for installation', {

@@ -1,4 +1,4 @@
-﻿import { Link, useRouter } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Github, LayoutDashboard, LogOut } from "lucide-react";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";

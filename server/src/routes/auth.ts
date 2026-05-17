@@ -4,7 +4,6 @@ import { Router } from 'express';
 import { HTTP_STATUS_OK } from '../config/constants';
 import { env } from '../config/env';
 import { databaseService } from '../services/databaseService';
-import { organizationLinkService } from '../services/organizationLinkService';
 import { buildGitHubAuthorizeUrl, exchangeCodeForProfile } from '../services/oauthService';
 import {
   clearUserSessionCookie,
@@ -83,10 +82,7 @@ authRouter.get('/installation/callback', async (req, res) => {
   try {
     const githubUserId = BigInt(session.githubUserId);
     const user = await databaseService.updateUserInstallationId(githubUserId, installationId);
-    await organizationLinkService.linkInstallationToOrganization(
-      installationId,
-      user.githubLogin,
-    );
+    await databaseService.ensureOrganizationForInstallation(installationId);
 
     setUserSessionCookie(res, toUserSession(user));
     logger.info('Installation linked to user', {
