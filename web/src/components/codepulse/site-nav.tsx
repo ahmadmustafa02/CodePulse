@@ -1,4 +1,4 @@
-import { Link, useRouter } from "@tanstack/react-router";
+﻿import { Link, useRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Github, LayoutDashboard, LogOut } from "lucide-react";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
@@ -7,9 +7,13 @@ import { fetchSession, signOut } from "@/lib/auth";
 export function CodePulseMark({ to = "/" }: { to?: "/" | "/dashboard" }) {
   return (
     <Link to={to} className="flex items-center gap-2.5">
-      <span className="grid size-6 place-items-center rounded-sm bg-zinc-100">
-        <span className="size-3 rounded-[1px] bg-zinc-950" />
-      </span>
+      <img
+        src="/favicon.png"
+        alt=""
+        width={24}
+        height={24}
+        className="size-6 rounded-sm"
+      />
       <span className="font-medium tracking-tight text-zinc-100">CodePulse</span>
     </Link>
   );
