@@ -155,6 +155,15 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 
 ---
 
+## ⚙️ Key Engineering Challenges
+
+- Mapping GitHub diff hunks to absolute file line numbers reliably across multi-commit PR updates
+- Structuring LLM outputs into strict JSON to eliminate parsing ambiguity
+- Preventing duplicate or noisy review comments across webhook retries
+- Designing per-developer attribution logic from Git commit metadata across forks and rebases
+
+---
+
 ## 🚀 Getting started
 
 ### Prerequisites
