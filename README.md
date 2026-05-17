@@ -102,8 +102,8 @@ The learning loop is the product. The PR review is just the input.
                                                        │
                                                        ▼
                                          ┌──────────────────────────┐
-                                         │ Digest API endpoint       │
-                                         │ Aggregate → Build digest  │
+                                         │ Digest API endpoint      │
+                                         │ Aggregate → Build digest │
                                          └─────────────┬────────────┘
                                                        │
                                                        ▼
