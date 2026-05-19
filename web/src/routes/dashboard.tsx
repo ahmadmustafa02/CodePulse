@@ -10,7 +10,6 @@ import { PRVolumeArea, LatencyLine } from "@/components/codepulse/charts";
 import { ChartSkeleton, ListSkeleton, CardGridSkeleton } from "@/components/codepulse/skeletons";
 import { EmptyState } from "@/components/codepulse/empty-state";
 import { SeverityBadge } from "@/components/codepulse/severity";
-import { OrganizationHealthBanner } from "@/components/codepulse/organization-health-banner";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard")({
@@ -40,9 +39,6 @@ function DashboardPage() {
   return (
     <AppShell eyebrow="This week" title="Pulse overview">
       {!installed && !sessionQ.isLoading ? <InstallAppBanner /> : null}
-      {installed && !repos.isLoading && repos.data ? (
-        <OrganizationHealthBanner repos={repos.data} />
-      ) : null}
       {!installed ? (
         <Panel>
           <p className="text-sm text-zinc-500">

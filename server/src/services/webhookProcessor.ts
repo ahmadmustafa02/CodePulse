@@ -2,10 +2,10 @@
 
 import { PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
 import type { WebhookEvent } from '../types/github';
-import { runAntigravityWorkflow } from './antigravityOrchestrator';
 import { databaseService } from './databaseService';
 import { githubCommentService } from './githubCommentService';
 import { githubDiffService } from './githubDiffService';
+import { groqAnalysisService } from './groqAnalysisService';
 import logger from '../utils/logger';
 
 function isSupportedEvent(eventType: string): boolean {
@@ -86,20 +86,7 @@ export class WebhookProcessor {
     });
 
     try {
-      const organization = await databaseService.upsertOrganization({
-        githubInstallationId: installationId,
-        name: owner,
-      });
-
-      const repository = await databaseService.upsertRepository({
-        githubRepoId: payload.repository.id,
-        name: payload.repository.name,
-        fullName: payload.repository.full_name,
-        private: payload.repository.private,
-        organizationId: organization.id,
-      });
-
-      const { parsedDiff, rawDiff } = await githubDiffService.fetchAndParseDiff({
+      const parsedDiff = await githubDiffService.fetchAndParseDiff({
         installationId,
         owner,
         repo,
@@ -123,26 +110,7 @@ export class WebhookProcessor {
         })),
       });
 
-      const { analysisResult, mitigationTriggered } = await runAntigravityWorkflow(
-        repository.id,
-        pullNumber,
-        payload.pull_request.html_url,
-        payload.pull_request.user.login,
-        parsedDiff.files.map((file) => file.filename),
-        rawDiff,
-        {
-          headSha: parsedDiff.headSha,
-          prTitle: parsedDiff.prTitle,
-          prDescription: parsedDiff.prDescription,
-          repo: parsedDiff.repo,
-        },
-      );
-
-      logger.info('Antigravity workflow complete', {
-        prNumber: pullNumber,
-        repo: `${owner}/${repo}`,
-        mitigationTriggered,
-      });
+      const analysisResult = await groqAnalysisService.analyzeDiff(parsedDiff);
 
       logger.info('Analysis complete', {
         prNumber: pullNumber,
@@ -179,6 +147,19 @@ export class WebhookProcessor {
       });
 
       try {
+        const organization = await databaseService.upsertOrganization({
+          githubInstallationId: installationId,
+          name: owner,
+        });
+
+        const repository = await databaseService.upsertRepository({
+          githubRepoId: payload.repository.id,
+          name: payload.repository.name,
+          fullName: payload.repository.full_name,
+          private: payload.repository.private,
+          organizationId: organization.id,
+        });
+
         const developer = await databaseService.upsertDeveloper({
           githubLogin: payload.pull_request.user.login,
           githubUserId: payload.pull_request.user.id,

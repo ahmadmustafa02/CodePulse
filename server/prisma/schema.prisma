@@ -8,11 +8,6 @@ datasource db {
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
-enum DeploymentState {
-  ACTIVE
-  QUARANTINED
-}
-
 model Organization {
   id                   String   @id @default(cuid())
   name                 String
@@ -27,20 +22,17 @@ model Organization {
 }
 
 model Repository {
-  id              String          @id @default(cuid())
-  githubRepoId    BigInt          @unique
-  name            String
-  fullName        String          @unique
-  private         Boolean         @default(false)
-  deploymentState DeploymentState @default(ACTIVE)
-  lastIncidentPr  String?
-  organizationId  String
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id             String   @id @default(cuid())
+  githubRepoId   BigInt   @unique
+  name           String
+  fullName       String   @unique
+  private        Boolean  @default(false)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   pullRequests PullRequest[]
-  agentTraces  AgentTrace[]
 }
 
 model Developer {
@@ -52,11 +44,11 @@ model Developer {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@unique([githubLogin, organizationId])
+
   organization Organization  @relation(fields: [organizationId], references: [id])
   pullRequests PullRequest[]
   issues       Issue[]
-
-  @@unique([githubLogin, organizationId])
 }
 
 model PullRequest {
@@ -74,12 +66,12 @@ model PullRequest {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@unique([githubPrId, repositoryId])
+
   organization Organization @relation(fields: [organizationId], references: [id])
   repository   Repository   @relation(fields: [repositoryId], references: [id])
   developer    Developer    @relation(fields: [developerId], references: [id])
   issues       Issue[]
-
-  @@unique([githubPrId, repositoryId])
 }
 
 model Issue {
@@ -113,28 +105,13 @@ model DigestLog {
 }
 
 model User {
-  id                 String   @id @default(cuid())
-  githubLogin        String   @unique
-  githubUserId       BigInt   @unique
-  avatarUrl          String?
-  email              String?
-  digestEmailEnabled Boolean  @default(false)
-  installationId     Int?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-}
-
-model AgentTrace {
-  id           String   @id @default(cuid())
-  prNumber     Int
-  repositoryId String
-  agentName    String
-  message      String   @db.Text
-  status       String
-  createdAt    DateTime @default(now())
-
-  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-
-  @@index([repositoryId, prNumber])
-  @@index([createdAt])
+  id                  String   @id @default(cuid())
+  githubLogin         String   @unique
+  githubUserId        BigInt   @unique
+  avatarUrl           String?
+  email               String?
+  digestEmailEnabled  Boolean  @default(false)
+  installationId      Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }

@@ -3,9 +3,7 @@ import { ensureLoggedIn } from "@/lib/route-guard";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { GitPullRequest, FileCode, Inbox } from "lucide-react";
-import { AgentTraceConsole } from "@/components/codepulse/agent-trace-console";
 import { AppShell } from "@/components/codepulse/app-shell";
-import { PipelineGuardrailBanner } from "@/components/codepulse/pipeline-guardrail-banner";
 import { Panel, PanelHeader } from "@/components/codepulse/panel";
 import { SeverityStackBar } from "@/components/codepulse/charts";
 import { ChartSkeleton, ListSkeleton } from "@/components/codepulse/skeletons";
@@ -16,7 +14,6 @@ import {
   api,
   apiBaseUrl,
   buildWeeklySeverityForRepo,
-  getAgentTraces,
   getReviews,
 } from "@/lib/api";
 
@@ -81,54 +78,17 @@ function RepoPage() {
     [reviewsQ.data, owner, repo],
   );
 
-  const tracePrNumber = useMemo(() => {
-    if (repoQ.data?.deploymentState === "QUARANTINED" && repoQ.data.lastIncidentPr) {
-      const incident = Number(repoQ.data.lastIncidentPr);
-      if (Number.isInteger(incident) && incident > 0) {
-        return incident;
-      }
-    }
-    if (!pullsQ.data?.length) {
-      return undefined;
-    }
-    const latest = [...pullsQ.data].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )[0];
-    return latest?.id;
-  }, [repoQ.data, pullsQ.data]);
-
-  const tracesQ = useQuery({
-    queryKey: ["traces", owner, repo, tracePrNumber],
-    queryFn: () => getAgentTraces(owner, repo, tracePrNumber),
-    enabled: Boolean(repoQ.data),
-  });
-
   return (
     <AppShell
       eyebrow="Repository"
       title={`${owner}/${repo}`}
       actions={<RepoSelector owner={owner} repo={repo} />}
     >
-      {(repoQ.isError || pullsQ.isError || reviewsQ.isError || tracesQ.isError) && (
+      {(repoQ.isError || pullsQ.isError || reviewsQ.isError) && (
         <Panel className="mb-6">
           <p className="text-sm text-red-400">Could not load repository data. Is the API running at {apiBaseUrl}?</p>
         </Panel>
       )}
-
-      <PipelineGuardrailBanner
-        deploymentState={repoQ.data?.deploymentState ?? "ACTIVE"}
-        lastIncidentPr={repoQ.data?.lastIncidentPr ?? null}
-        loading={repoQ.isLoading}
-      />
-
-      <div className="mb-8">
-        <AgentTraceConsole
-          traces={tracesQ.data}
-          loading={tracesQ.isLoading}
-          prFilter={tracePrNumber}
-        />
-      </div>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {reviewsQ.isLoading ? (

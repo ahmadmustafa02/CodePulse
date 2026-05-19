@@ -5,7 +5,6 @@ import { JSON_BODY_LIMIT } from '../config/constants';
 import { authRouter } from './auth';
 import { digestRouter } from './digest';
 import { healthRouter } from './health';
-import { reposRouter } from './repos';
 import { statsRouter } from './stats';
 import { webhooksRouter } from './webhooks';
 
@@ -20,4 +19,3 @@ apiRouter.use('/health', jsonParser, healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/digest', jsonParser, digestRouter);
 apiRouter.use(statsRouter);
-apiRouter.use(reposRouter);

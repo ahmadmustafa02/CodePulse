@@ -24,19 +24,6 @@ type FetchAndParseParams = {
   prDescription: string;
 };
 
-export type ParseRawDiffMeta = {
-  prNumber: number;
-  repo: string;
-  headSha: string;
-  prTitle: string;
-  prDescription: string;
-};
-
-export type FetchAndParseResult = {
-  parsedDiff: ParsedDiff;
-  rawDiff: string;
-};
-
 type ParseDiffFile = ReturnType<typeof parseDiff>[number];
 type ParseDiffChunk = ParseDiffFile['chunks'][number];
 type ParseDiffChange = ParseDiffChunk['changes'][number];
@@ -169,26 +156,7 @@ export class GitHubDiffService {
     });
   }
 
-  parseRawDiff(rawDiff: string, meta: ParseRawDiffMeta): ParsedDiff {
-    const parsedFiles = parseDiff(rawDiff);
-    const files = this.mapParsedFiles(parsedFiles);
-    const totalAdditions = files.reduce((sum, file) => sum + file.additions, 0);
-    const totalDeletions = files.reduce((sum, file) => sum + file.deletions, 0);
-
-    return {
-      prNumber: meta.prNumber,
-      repo: meta.repo,
-      headSha: meta.headSha,
-      prTitle: meta.prTitle,
-      prDescription: meta.prDescription,
-      files,
-      totalAdditions,
-      totalDeletions,
-      parsedAt: new Date().toISOString(),
-    };
-  }
-
-  async fetchAndParseDiff(params: FetchAndParseParams): Promise<FetchAndParseResult> {
+  async fetchAndParseDiff(params: FetchAndParseParams): Promise<ParsedDiff> {
     const { installationId, owner, repo, pullNumber, headSha, prTitle, prDescription } = params;
     const token = await githubAuthService.getInstallationToken(installationId);
     const octokit = new Octokit({ auth: token });
@@ -201,23 +169,33 @@ export class GitHubDiffService {
     });
 
     const rawDiff = response.data as unknown as string;
-    const parsedDiff = this.parseRawDiff(rawDiff, {
+    const parsedFiles = parseDiff(rawDiff);
+    const files = this.mapParsedFiles(parsedFiles);
+
+    const totalAdditions = files.reduce((sum, file) => sum + file.additions, 0);
+    const totalDeletions = files.reduce((sum, file) => sum + file.deletions, 0);
+
+    const result: ParsedDiff = {
       prNumber: pullNumber,
       repo: `${owner}/${repo}`,
       headSha,
       prTitle,
       prDescription,
-    });
+      files,
+      totalAdditions,
+      totalDeletions,
+      parsedAt: new Date().toISOString(),
+    };
 
     logger.info('PR diff fetched and parsed', {
-      repo: parsedDiff.repo,
+      repo: result.repo,
       prNumber: pullNumber,
-      fileCount: parsedDiff.files.length,
-      totalAdditions: parsedDiff.totalAdditions,
-      totalDeletions: parsedDiff.totalDeletions,
+      fileCount: files.length,
+      totalAdditions,
+      totalDeletions,
     });
 
-    return { parsedDiff, rawDiff };
+    return result;
   }
 }
 

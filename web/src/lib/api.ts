@@ -1,13 +1,10 @@
 import type {
-  AgentTraceRecord,
   ApiResponse,
+  UserSession,
   DashboardStats,
-  DeploymentState,
-  RepositoryDetails,
   RepositoryItem,
   ReviewItem,
   TeamMember,
-  UserSession,
 } from "@/types/api";
 import type { Severity } from "@/lib/severity";
 import { normalizeSeverity } from "@/lib/severity";
@@ -45,19 +42,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getStats = () => apiFetch<DashboardStats>("/stats");
 export const getRepositories = () => apiFetch<RepositoryItem[]>("/repositories");
-
-function repoPath(owner: string, repo: string): string {
-  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
-}
-
-export const getRepositoryDetails = (owner: string, repo: string) =>
-  apiFetch<RepositoryDetails>(repoPath(owner, repo));
-
-export const getAgentTraces = (owner: string, repo: string, prNumber?: number) => {
-  const qs = prNumber !== undefined ? `?prNumber=${prNumber}` : "";
-  return apiFetch<AgentTraceRecord[]>(`${repoPath(owner, repo)}/traces${qs}`);
-};
-
 export const getReviews = () => apiFetch<ReviewItem[]>("/reviews");
 export const getTeam = () => apiFetch<TeamMember[]>("/team");
 export const getSession = () => apiFetch<UserSession | null>("/auth/session");
@@ -87,8 +71,6 @@ export type RepoRow = {
   openPRs: number;
   reviewed: number;
   health: number;
-  deploymentState: DeploymentState;
-  lastIncidentPr: string | null;
 };
 
 export type PullRow = {
@@ -148,13 +130,7 @@ function mapRepo(r: RepositoryItem, prCount: number): RepoRow {
     openPRs: prCount,
     reviewed: r.totalIssues,
     health,
-    deploymentState: r.deploymentState ?? "ACTIVE",
-    lastIncidentPr: r.lastIncidentPr ?? null,
   };
-}
-
-function mapRepositoryDetails(r: RepositoryDetails): RepoRow {
-  return mapRepo(r, r.pullRequestCount);
 }
 
 function dominantSeverity(issues: ReviewItem["issues"]): Severity {
@@ -402,12 +378,14 @@ export const api = {
     return repos.map((repo) => mapRepo(repo, repo.pullRequestCount));
   },
   repo: async (owner: string, name: string) => {
-    try {
-      const details = await getRepositoryDetails(owner, name);
-      return mapRepositoryDetails(details);
-    } catch {
-      return null;
-    }
+    const rows = await getRepositories();
+    const match = rows.find((r) => {
+      const { owner: o, name: n } = splitFullName(r.fullName);
+      return o === owner && n === name;
+    });
+    if (!match) return null;
+    const mapped = mapRepo(match, match.pullRequestCount);
+    return { ...mapped, owner, name };
   },
   pulls: async () => (await getReviews()).map(mapReviewToPull),
   pullsFor: async (repoSlug: string) =>
