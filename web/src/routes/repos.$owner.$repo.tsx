@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ensureLoggedIn } from "@/lib/route-guard";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -25,6 +25,43 @@ export const Route = createFileRoute("/repos/$owner/$repo")({
   component: RepoPage,
 });
 
+function RepoSelector({ owner, repo }: { owner: string; repo: string }) {
+  const router = useRouter();
+  const reposQ = useQuery({ queryKey: ["repos"], queryFn: api.repos });
+
+  if (!reposQ.data || reposQ.data.length <= 1) {
+    return null;
+  }
+
+  const current = `${owner}/${repo}`;
+
+  return (
+    <label className="flex items-center gap-2 text-xs text-zinc-500">
+      <span className="hidden sm:inline">Repository</span>
+      <select
+        value={current}
+        onChange={(e) => {
+          const slash = e.target.value.indexOf("/");
+          if (slash === -1) return;
+          const nextOwner = e.target.value.slice(0, slash);
+          const nextRepo = e.target.value.slice(slash + 1);
+          void router.navigate({
+            to: "/repos/$owner/$repo",
+            params: { owner: nextOwner, repo: nextRepo },
+          });
+        }}
+        className="max-w-[min(100vw-2rem,280px)] cursor-pointer truncate rounded-md border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-sm font-medium text-zinc-100 focus:border-zinc-600 focus:outline-none"
+      >
+        {reposQ.data.map((r) => (
+          <option key={r.id} value={`${r.owner}/${r.name}`}>
+            {r.owner}/{r.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function RepoPage() {
   const { owner, repo } = Route.useParams();
   const repoQ = useQuery({ queryKey: ["repo", owner, repo], queryFn: () => api.repo(owner, repo) });
@@ -42,7 +79,11 @@ function RepoPage() {
   );
 
   return (
-    <AppShell eyebrow="Repository" title={`${owner}/${repo}`}>
+    <AppShell
+      eyebrow="Repository"
+      title={`${owner}/${repo}`}
+      actions={<RepoSelector owner={owner} repo={repo} />}
+    >
       {(repoQ.isError || pullsQ.isError || reviewsQ.isError) && (
         <Panel className="mb-6">
           <p className="text-sm text-red-400">Could not load repository data. Is the API running at {apiBaseUrl}?</p>
