@@ -72,15 +72,15 @@ Each **Sunday**, developers who opt in receive a personalized email digest summa
                                       │
                                       ▼
                        ┌──────────────────────────────┐
-                       │  Express · Fetch diff          │
-                       │  Parse unified diff format     │
+                       │  Express · Fetch diff        │
+                       │  Parse unified diff format   │
                        └──────────────┬───────────────┘
                                       │
                                       ▼
                        ┌──────────────────────────────┐
-                       │  Groq · Llama 3.3 70B          │
-                       │  Structured tool-calling       │
-                       │  → typed JSON per issue        │
+                       │  Groq · Llama 3.3 70B        │
+                       │  Structured tool-calling     │
+                       │  → typed JSON per issue      │
                        └──────────────┬───────────────┘
                                       │
                   ┌───────────────────┴───────────────────┐
