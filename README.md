@@ -25,19 +25,15 @@
 <img width="1474" height="896" alt="codepulsedashboard" src="https://github.com/user-attachments/assets/15b137d5-b2fe-43bb-80ae-049112fd7492" />
 <img width="1357" height="882" alt="digest" src="https://github.com/user-attachments/assets/3658ee11-fc66-463c-9dee-d247a321ce85" />
 
-
-
-
 ---
 
 ## 🎯 The pitch
 
 > **CodeRabbit reviews your PR. CodePulse reviews your habits.**
 
-Install once on GitHub, pick your repos, and open a pull request. CodePulse reviews the diff inline like a senior engineer would — pinned to exact lines, with severity labels — then quietly remembers every issue against the developer who wrote it.
+Install once on GitHub, pick your repos, and open a pull request. CodePulse reviews the diff inline like a senior engineer would — pinned to exact lines, with severity labels — then stores every finding against the developer who wrote it.
 
-Every Week, each developer gets a personalized digest: *"You introduced 3 SQL injection patterns this week. Here's how to stop."*
-
+Each **Sunday**, developers who opt in receive a personalized email digest summarizing their recurring issue categories from the past week.
 
 <div align="center">
 
@@ -51,11 +47,12 @@ Every Week, each developer gets a personalized digest: *"You introduced 3 SQL in
 
 | | |
 |---|---|
-| 🤖 **Automatic PR reviews** | Triggered on `opened`, `synchronize`, and `reopened`. Inline comments pinned to exact lines with **Critical / High / Medium / Low** severity labels. |
+| 🤖 **Automatic PR reviews** | Triggered on `opened`, `synchronize`, and `reopened`. Inline comments on exact lines with **Critical / High / Medium / Low** severity. |
 | 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. Groq + Llama 3.3 70B with structured tool-calling returns typed JSON per issue. |
-| 📊 **Per-developer pattern tracking** | Every issue is stored against the developer who wrote it, across every PR, forever. The longer you use it, the sharper it gets. |
-| 📬 **Weekly personalized digests** | Weekly emails surface recurring mistakes per developer with concrete fixes. Powered by Resend. |
-| 📈 **Team dashboard** | PR volume, review latency, connected repos, severity trends, category breakdown, file-level hotspots. |
+| 📊 **Per-developer issue tracking** | Every finding is stored per developer, repo, and PR in Neon — powers dashboard charts and digests. |
+| 📬 **Weekly digest emails** | Opt-in via the dashboard. Aggregated by category, sent through Resend. Triggered by GitHub Actions every **Sunday 09:00 UTC**. |
+| 📈 **Team dashboard** | Org-wide metrics: open PRs, critical findings, PR volume vs reviews (all connected repos combined). |
+| 📂 **Per-repository view** | Severity over time, health score, PR list, and top files — **one repo at a time** with a repo selector when multiple are connected. |
 | 🔒 **Multi-tenant isolation** | Scoped per GitHub App installation — each org's data is fully isolated. |
 | 🛡️ **Signed webhooks** | HMAC-SHA256 verification on every event. Lockfiles, minified assets, and generated files are skipped automatically. |
 
@@ -75,50 +72,39 @@ Every Week, each developer gets a personalized digest: *"You introduced 3 SQL in
                                       │
                                       ▼
                        ┌──────────────────────────────┐
-                       │  Express · Fetch diff        │
-                       │  Parse unified diff format   │
+                       │  Express · Fetch diff          │
+                       │  Parse unified diff format     │
                        └──────────────┬───────────────┘
                                       │
                                       ▼
                        ┌──────────────────────────────┐
-                       │  Groq · Llama 3.3 70B        │
-                       │  Structured tool-calling     │
-                       │  → typed JSON per issue      │
+                       │  Groq · Llama 3.3 70B          │
+                       │  Structured tool-calling       │
+                       │  → typed JSON per issue        │
                        └──────────────┬───────────────┘
                                       │
                   ┌───────────────────┴───────────────────┐
                   ▼                                       ▼
    ┌──────────────────────────┐          ┌──────────────────────────┐
    │  GitHub REST API         │          │  PostgreSQL (Neon)       │
-   │  Inline review comments  │          │  Per dev · per repo · PR │
+   │  Inline review comments  │          │  Org · repo · dev · PR   │
    └──────────────────────────┘          └──────────────┬───────────┘
                                                         │
                                                         ▼
                                          ┌──────────────────────────┐
-<<<<<<< HEAD
-                                         │  Sunday cron (GitHub)    │
-                                         │  Aggregate → Resend      │
-                                         │  Personalized digest 📬  │
-=======
-                                         │ GitHub Actions (schedule)│
-                                         │ Weekly trigger           │
-                                         └─────────────┬────────────┘
-                                                       │
-                                                       ▼
+                                         │  GitHub Actions (Sunday) │
+                                         │  POST /digest/trigger      │
+                                         └──────────────┬───────────┘
+                                                        │
+                                                        ▼
                                          ┌──────────────────────────┐
-                                         │ Digest API endpoint      │
-                                         │ Aggregate → Build digest │
-                                         └─────────────┬────────────┘
-                                                       │
-                                                       ▼
-                                         ┌──────────────────────────┐
-                                         │ Email pipeline (Resend)  │
-                                         │                          │
->>>>>>> 798fde4610e16c4cbcd5063fd09a357a50c82f10
+                                         │  Aggregate issues (7d)   │
+                                         │  → HTML email (Resend)   │
+                                         │  (opt-in users only)     │
                                          └──────────────────────────┘
 ```
 
-Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` to the backend, keeping session cookies same-origin so sign-in works without third-party cookie headaches.
+Webhooks hit the **API on Azure** directly. The **Vercel** frontend proxies `/api/v1/*` to the backend so session cookies stay same-origin.
 
 ---
 
@@ -141,7 +127,7 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 <td valign="top" width="33%">
 
 **Frontend**
-- React · TypeScript
+- React · TanStack Router · TypeScript
 - Tailwind CSS
 - Recharts
 - Vercel
@@ -151,13 +137,9 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 
 **Infrastructure**
 - GitHub App (webhook + bot)
-- GitHub OAuth (sign-in)
-<<<<<<< HEAD
-- GitHub Actions cron (weekly digest trigger)
-=======
-- Scheduled digest trigger via GitHub Actions
->>>>>>> 798fde4610e16c4cbcd5063fd09a357a50c82f10
-- HMAC-SHA256 signature verify
+- GitHub OAuth (sign-in + `user:email`)
+- GitHub Actions (weekly digest cron)
+- HMAC-SHA256 webhook verify
 
 </td>
 </tr>
@@ -165,12 +147,14 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 
 ---
 
-## ⚙️ Key Engineering Challenges
+## 📊 Dashboard vs repository views
 
-- Mapping GitHub diff hunks to absolute file line numbers reliably across multi-commit PR updates
-- Structuring LLM outputs into strict JSON to eliminate parsing ambiguity
-- Preventing duplicate or noisy review comments across webhook retries
-- Designing per-developer attribution logic from Git commit metadata across forks and rebases
+| View | Scope |
+|------|--------|
+| **Dashboard** (`/dashboard`) | All repos under your GitHub App installation — combined stats and charts |
+| **Repositories** (`/repos/{owner}/{repo}`) | Single repo only — use the **Repository** dropdown to switch between connected repos |
+| **Developers** | Per-developer issue trends across all repos (28-day window) |
+| **Weekly digest** (`/digest`) | Email preview + **Get weekly email** opt-in toggle |
 
 ---
 
@@ -182,7 +166,7 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 - **PostgreSQL** — [Neon](https://neon.tech) free tier works great
 - **GitHub App + OAuth App** — [setup docs](https://docs.github.com/en/apps/creating-github-apps)
 - **Groq API key** — [console.groq.com](https://console.groq.com)
-- **Resend API key** — [resend.com](https://resend.com)
+- **Resend API key** — [resend.com](https://resend.com) (for weekly digests)
 
 ### 1 · Clone & install
 
@@ -204,7 +188,7 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-> Server runs at `http://localhost:3001`
+> API runs at `http://localhost:3001`
 
 ### 3 · Configure the web app
 
@@ -214,13 +198,13 @@ cp .env.example .env.local
 npm run dev
 ```
 
-> Dashboard runs at `http://localhost:3000`
+> Dashboard runs at `http://localhost:8080`
 
 ### 4 · GitHub setup
 
 |  | Local | Production |
 |---|---|---|
-| **OAuth callback** | `http://localhost:3001/api/v1/auth/github/callback` | `https://your-api-host/api/v1/auth/github/callback` |
+| **OAuth callback** | `http://localhost:3001/api/v1/auth/github/callback` | `https://getcodepulse.vercel.app/api/v1/auth/github/callback` (via Vercel proxy) or your API host |
 | **Webhook URL** | ngrok → `/api/v1/webhooks/github` | `https://your-api-host/api/v1/webhooks/github` |
 | **Webhook events** | Pull request | Pull request |
 
@@ -232,16 +216,34 @@ npm run dev
 | Contents | Read |
 | Pull requests | **Read & write** |
 
-### 5 · Verify the full pipeline
+### 5 · Verify the PR review pipeline
 
-1. Sign in with GitHub at `localhost:3000`
+1. Sign in with GitHub at `http://localhost:8080`
 2. Install the GitHub App on a test repository
-3. Confirm the repo appears under **Connected Repositories**
+3. Confirm repos appear under **Connected repositories** on the dashboard
 4. Open a PR with a real code change (not just lockfiles)
 5. Watch for inline review comments within **1–3 minutes**
-6. Refresh the dashboard — the PR appears under **Recent Reviews**
+6. Refresh the dashboard — the PR appears under **Recent reviews**
 
-> 💡 **Debugging tip:** Check **GitHub → App → Advanced → Recent Deliveries** for `202` responses to confirm webhooks are reaching the server.
+> 💡 **Debugging:** GitHub → App → Advanced → Recent Deliveries — confirm `202` responses.
+
+### 6 · Weekly digest (production)
+
+1. Set server env: `RESEND_API_KEY`, `DIGEST_FROM_EMAIL`, `DIGEST_CRON_SECRET`
+2. Add GitHub repo secrets:
+   - `CODEPULSE_API_URL` — Azure API base URL, no trailing slash (e.g. `https://thecodepulse.azurewebsites.net`)
+   - `DIGEST_CRON_SECRET` — same value as server
+3. Workflow [`.github/workflows/weekly-digest.yml`](.github/workflows/weekly-digest.yml) runs **Sundays 09:00 UTC** (manual trigger available)
+4. Users enable email on **Weekly digest** page (`/digest`) — must be signed in so CodePulse has their GitHub email
+
+**Manual trigger (local or debug):**
+
+```bash
+curl -X POST https://your-api-host/api/v1/digest/trigger \
+  -H "Content-Type: application/json" \
+  -H "x-digest-secret: YOUR_DIGEST_CRON_SECRET" \
+  -d "{}"
+```
 
 ---
 
@@ -261,10 +263,10 @@ npm run dev
 | `GITHUB_OAUTH_CALLBACK_URL` | Must match OAuth app settings exactly |
 | `GROQ_API_KEY` | Groq API key |
 | `AUTH_SECRET` | Session JWT signing secret (min 32 chars) |
-| `WEB_APP_URL` | Frontend origin for CORS and redirects |
+| `WEB_APP_URL` | Frontend origin for CORS and redirects (`http://localhost:8080` locally) |
 | `RESEND_API_KEY` | Resend API key |
 | `DIGEST_FROM_EMAIL` | Sender address for digest emails |
-| `DIGEST_CRON_SECRET` | Protects the digest trigger endpoint |
+| `DIGEST_CRON_SECRET` | Protects `POST /api/v1/digest/trigger` (min 20 chars) |
 
 </details>
 
@@ -273,10 +275,17 @@ npm run dev
 
 | Variable | Description |
 |---|---|
-| `AUTH_SECRET` | Must match server `AUTH_SECRET` |
-| `AUTH_GITHUB_ID` | OAuth App client ID |
-| `AUTH_GITHUB_SECRET` | OAuth App client secret |
-| `VITE` | API base URL (`http://localhost:3001/api/v1` locally) |
+| `VITE_API_URL` | API base URL locally (`http://localhost:3001/api/v1`). Leave unset in production — app uses same-origin `/api/v1` via Vercel rewrites. |
+
+</details>
+
+<details>
+<summary><b>GitHub Actions</b> · repository secrets</summary>
+
+| Secret | Description |
+|---|---|
+| `CODEPULSE_API_URL` | Production API host (no trailing slash) |
+| `DIGEST_CRON_SECRET` | Same as server `DIGEST_CRON_SECRET` |
 
 </details>
 
@@ -293,7 +302,7 @@ npm run lint
 npm run typecheck
 
 # ── Web ───────────────────────────────────
-npm run dev         # react dev server
+npm run dev         # Vite dev server (port 8080)
 npm run build       # production build
 npm run lint
 ```
@@ -307,11 +316,7 @@ npm run lint
 | Frontend | **Vercel** |
 | API | **Azure App Service** |
 | Database | **Neon PostgreSQL** |
-<<<<<<< HEAD
-| Cron | **GitHub Actions** (`.github/workflows/weekly-digest.yml`) |
-=======
-| Cron | **Github Actions** |
->>>>>>> 798fde4610e16c4cbcd5063fd09a357a50c82f10
+| Weekly digest cron | **GitHub Actions** ([`weekly-digest.yml`](.github/workflows/weekly-digest.yml)) |
 
 > ⚠️ Webhooks must point to the **API host directly** — never the Vercel frontend URL.
 
