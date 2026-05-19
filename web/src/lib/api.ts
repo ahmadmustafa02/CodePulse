@@ -50,6 +50,19 @@ export async function logout(): Promise<void> {
   await apiFetch<null>("/auth/logout", { method: "POST" });
 }
 
+export type DigestPreferences = {
+  digestEmailEnabled: boolean;
+  hasEmail: boolean;
+};
+
+export const getDigestPreferences = () => apiFetch<DigestPreferences>("/digest/preferences");
+
+export const updateDigestPreferences = (digestEmailEnabled: boolean) =>
+  apiFetch<DigestPreferences>("/digest/preferences", {
+    method: "PATCH",
+    body: JSON.stringify({ digestEmailEnabled }),
+  });
+
 export type RepoRow = {
   id: string;
   owner: string;

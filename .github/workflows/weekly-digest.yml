@@ -1,0 +1,67 @@
+name: Weekly digest
+
+on:
+  schedule:
+    # Sunday 09:00 UTC
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+
+jobs:
+  trigger-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly digest
+        env:
+          API_URL: ${{ secrets.CODEPULSE_API_URL }}
+          DIGEST_CRON_SECRET: ${{ secrets.DIGEST_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${API_URL}" ]; then
+            echo "::error::CODEPULSE_API_URL secret is not set"
+            exit 1
+          fi
+          if [ -z "${DIGEST_CRON_SECRET}" ]; then
+            echo "::error::DIGEST_CRON_SECRET secret is not set"
+            exit 1
+          fi
+
+          BASE="${API_URL%/}"
+          ENDPOINT="${BASE}/api/v1/digest/trigger"
+
+          echo "POST ${ENDPOINT}"
+
+          HTTP_CODE=$(curl -sS -o /tmp/digest-response.json -w "%{http_code}" \
+            -X POST "${ENDPOINT}" \
+            -H "Content-Type: application/json" \
+            -H "x-digest-secret: ${DIGEST_CRON_SECRET}" \
+            -d '{}')
+
+          echo "HTTP status: ${HTTP_CODE}"
+          echo "Response body:"
+          cat /tmp/digest-response.json
+          echo ""
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "::error::Digest trigger returned HTTP ${HTTP_CODE}"
+            exit 1
+          fi
+
+          SUCCESS=$(node -e "
+            const fs = require('fs');
+            const body = JSON.parse(fs.readFileSync('/tmp/digest-response.json', 'utf8'));
+            const d = body.data ?? {};
+            console.log('--- summary ---');
+            console.log('success:', body.success);
+            console.log('week:', d.weekStart, '→', d.weekEnd);
+            console.log('organizations:', d.organizationsProcessed);
+            console.log('developers with issues:', d.developerCount);
+            console.log('emails sent:', d.digestsSent);
+            console.log('skipped (no email):', d.skippedNoEmail);
+            console.log('skipped (opted out):', d.skippedOptOut);
+            if (d.errors?.length) {
+              console.log('errors:');
+              for (const e of d.errors) console.log(' -', e);
+            }
+            process.exit(body.success === true ? 0 : 1);
+          ")

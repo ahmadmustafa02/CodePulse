@@ -6,6 +6,7 @@ export const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 export const RATE_LIMIT_MAX_REQUESTS = 100;
 
 export const HTTP_STATUS_BAD_REQUEST = 400;
+export const HTTP_STATUS_OK = 200;
 export const HTTP_STATUS_UNAUTHORIZED = 401;
 export const HTTP_STATUS_ACCEPTED = 202;
 export const HTTP_STATUS_NOT_IMPLEMENTED = 501;
@@ -75,8 +76,7 @@ export const DIGEST_SECRET_HEADER = 'x-digest-secret';
 export const ERROR_CODE_INVALID_DIGEST_SECRET = 'INVALID_DIGEST_SECRET';
 export const DIGEST_WEEK_DAYS = 7;
 export const DIGEST_TOP_FILES_LIMIT = 3;
-export const DIGEST_PLACEHOLDER_EMAIL_DOMAIN = 'placeholder.dev';
-export const HTTP_STATUS_OK = 200;
 
 export const DIGEST_TRIGGER_ROUTE = '/trigger';
 export const DIGEST_HEALTH_ROUTE = '/health';
+export const DIGEST_PREFERENCES_ROUTE = '/preferences';

@@ -89,6 +89,36 @@ export class DatabaseService {
     return prisma.user.findUnique({ where: { githubUserId } });
   }
 
+  async getDigestPreferences(githubUserId: bigint): Promise<{
+    digestEmailEnabled: boolean;
+    hasEmail: boolean;
+  } | null> {
+    const user = await prisma.user.findUnique({
+      where: { githubUserId },
+      select: { digestEmailEnabled: true, email: true },
+    });
+    if (!user) {
+      return null;
+    }
+    const email = user.email?.trim();
+    return {
+      digestEmailEnabled: user.digestEmailEnabled,
+      hasEmail: Boolean(email && email.length > 0),
+    };
+  }
+
+  async setDigestEmailEnabled(githubUserId: bigint, enabled: boolean): Promise<User> {
+    const user = await prisma.user.update({
+      where: { githubUserId },
+      data: { digestEmailEnabled: enabled, updatedAt: new Date() },
+    });
+    logger.info('Digest email preference updated', {
+      githubLogin: user.githubLogin,
+      digestEmailEnabled: enabled,
+    });
+    return user;
+  }
+
   async updateUserInstallationId(githubUserId: bigint, installationId: number): Promise<User> {
     const user = await prisma.user.update({
       where: { githubUserId },

@@ -96,7 +96,7 @@ The learning loop is the product. The PR review is just the input.
                                                         │
                                                         ▼
                                          ┌──────────────────────────┐
-                                         │  Sunday cron (Railway)   │
+                                         │  Sunday cron (GitHub)    │
                                          │  Aggregate → Resend      │
                                          │  Personalized digest 📬  │
                                          └──────────────────────────┘
@@ -136,7 +136,7 @@ Webhooks hit the API on Azure directly. The Vercel frontend proxies `/api/v1/*` 
 **Infrastructure**
 - GitHub App (webhook + bot)
 - GitHub OAuth (sign-in)
-- Railway cron (weekly trigger)
+- GitHub Actions cron (weekly digest trigger)
 - HMAC-SHA256 signature verify
 
 </td>
@@ -278,7 +278,7 @@ npm run lint
 | Frontend | **Vercel** |
 | API | **Azure App Service** |
 | Database | **Neon PostgreSQL** |
-| Cron | **Railway** |
+| Cron | **GitHub Actions** (`.github/workflows/weekly-digest.yml`) |
 
 > ⚠️ Webhooks must point to the **API host directly** — never the Vercel frontend URL.
 

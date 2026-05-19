@@ -13,8 +13,18 @@ export type DeveloperDigest = {
 
 export type DigestResult = {
   organizationId: string;
-  digestsSent: number;
+  weekStart: string;
+  weekEnd: string;
+  organizationsProcessed: number;
   developerCount: number;
+  digestsSent: number;
+  skippedNoEmail: number;
+  skippedOptOut: number;
   errors: string[];
   sentAt: string;
+};
+
+export type DigestPreferences = {
+  digestEmailEnabled: boolean;
+  hasEmail: boolean;
 };
