@@ -23,7 +23,7 @@ export const Route = createFileRoute("/")({
   }),
   head: () => ({
     meta: [
-      { title: "CodePulse — AI code review that gets smarter every week" },
+      { title: "CodePulse — AI Code review that gets personal" },
       {
         name: "description",
         content:
@@ -58,7 +58,7 @@ function LandingPage() {
               <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">v2.4 context engine live</span>
             </div>
             <h1 className="mb-6 text-balance text-4xl font-medium leading-tight tracking-tight text-zinc-100 md:text-5xl lg:text-6xl">
-              AI code review that gets smarter every week
+              AI Code review that gets personal.
             </h1>
             <p className="mb-10 max-w-[48ch] text-pretty text-lg leading-relaxed text-zinc-400">
               CodePulse reviews every PR automatically, posts inline feedback on the exact lines in GitHub, tracks each developer's mistake patterns, and sends a weekly learning digest tailored to them.
