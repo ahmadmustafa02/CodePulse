@@ -7,6 +7,7 @@ export const RATE_LIMIT_MAX_REQUESTS = 100;
 
 export const HTTP_STATUS_BAD_REQUEST = 400;
 export const HTTP_STATUS_OK = 200;
+export const HTTP_STATUS_NOT_FOUND = 404;
 export const HTTP_STATUS_UNAUTHORIZED = 401;
 export const HTTP_STATUS_ACCEPTED = 202;
 export const HTTP_STATUS_NOT_IMPLEMENTED = 501;
@@ -35,6 +36,25 @@ export const SUPPORTED_EVENTS = ['pull_request'] as const;
 export const PR_ACTIONS_TO_PROCESS = ['opened', 'synchronize', 'reopened'] as const;
 
 export const GITHUB_WEBHOOK_ROUTE = '/github';
+export const GITHUB_WEBHOOK_SIMULATE_ROUTE = '/github/simulate';
+
+export const SIMULATE_DEFAULT_REPO_OWNER = 'ahmadmustafa02';
+export const SIMULATE_DEFAULT_REPO_NAME = 'CodePulse';
+export const SIMULATE_DEFAULT_DEVELOPER_NAME = 'antigravity-simulator';
+export const SIMULATE_DEFAULT_PR_NUMBER = 9001;
+export const SIMULATE_DEFAULT_CHANGED_FILES = ['src/auth/login.ts'] as const;
+
+export const SIMULATE_DEFAULT_DIFF_CONTENT = `diff --git a/src/auth/login.ts b/src/auth/login.ts
+index 1111111..2222222 100644
+--- a/src/auth/login.ts
++++ b/src/auth/login.ts
+@@ -1,4 +1,5 @@
+ export async function login(username: string, password: string) {
++  const apiToken = "sk-live-antigravity-demo-exposed-secret-token";
+  const query = "SELECT * FROM users WHERE name = '" + username + "' AND pass = '" + password + "'";
+  return fetch("/api/login", { headers: { Authorization: \`Bearer \${apiToken}\` } });
+ }
+`;
 
 export const JWT_ALGORITHM = 'RS256';
 export const JWT_CLOCK_SKEW_SECONDS = 60;

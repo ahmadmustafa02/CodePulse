@@ -119,6 +119,8 @@ export async function getRepositories(organizationId: string) {
       name: repo.name,
       fullName: repo.fullName,
       private: repo.private,
+      deploymentState: repo.deploymentState,
+      lastIncidentPr: repo.lastIncidentPr,
       pullRequestCount: repo._count.pullRequests,
       totalIssues,
       lastReviewedAt: lastReview?.updatedAt.toISOString() ?? null,

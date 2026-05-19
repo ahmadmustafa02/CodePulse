@@ -28,16 +28,32 @@ export type DashboardStats = {
   }[];
 };
 
+export type DeploymentState = "ACTIVE" | "QUARANTINED";
+
 export type RepositoryItem = {
   id: string;
   name: string;
   fullName: string;
   private: boolean;
+  deploymentState: DeploymentState;
+  lastIncidentPr: string | null;
   pullRequestCount: number;
   totalIssues: number;
   lastReviewedAt: string | null;
   lastReviewIssueCount: number;
   status: string;
+};
+
+export type RepositoryDetails = RepositoryItem;
+
+export type AgentTraceRecord = {
+  id: string;
+  prNumber: number;
+  repositoryId: string;
+  agentName: string;
+  message: string;
+  status: string;
+  createdAt: string;
 };
 
 export type ReviewIssue = {
