@@ -93,7 +93,7 @@ Each **Sunday**, developers who opt in receive a personalized email digest summa
                                                         ▼
                                          ┌──────────────────────────┐
                                          │  GitHub Actions (Sunday) │
-                                         │  POST /digest/trigger      │
+                                         │  POST /digest/trigger    │
                                          └──────────────┬───────────┘
                                                         │
                                                         ▼
