@@ -9,9 +9,9 @@ export function HeroCodePreview() {
         <div className="flex items-center justify-between border-b border-zinc-800/60 bg-zinc-900/40 px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="flex gap-1.5">
-              <span className="size-2.5 rounded-full bg-zinc-800" />
-              <span className="size-2.5 rounded-full bg-zinc-800" />
-              <span className="size-2.5 rounded-full bg-zinc-800" />
+              <span className="size-2.5 rounded-full" style={{ backgroundColor: "#FF5F57" }} />
+              <span className="size-2.5 rounded-full" style={{ backgroundColor: "#FEBC2E" }} />
+              <span className="size-2.5 rounded-full" style={{ backgroundColor: "#28C840" }} />
             </div>
             <span className="font-mono text-xs text-zinc-500">your-org/api/src/handlers/charges.ts</span>
           </div>
