@@ -65,19 +65,22 @@ type UpsertUserParams = {
 
 export class DatabaseService {
   async upsertUser(params: UpsertUserParams): Promise<User> {
+    const emailUpdate =
+      params.email && params.email.trim().length > 0 ? { email: params.email.trim() } : {};
+
     const user = await prisma.user.upsert({
       where: { githubUserId: params.githubUserId },
       update: {
         githubLogin: params.githubLogin,
         avatarUrl: params.avatarUrl ?? null,
-        email: params.email ?? null,
+        ...emailUpdate,
         updatedAt: new Date(),
       },
       create: {
         githubLogin: params.githubLogin,
         githubUserId: params.githubUserId,
         avatarUrl: params.avatarUrl ?? null,
-        email: params.email ?? null,
+        email: params.email?.trim() || null,
       },
     });
 

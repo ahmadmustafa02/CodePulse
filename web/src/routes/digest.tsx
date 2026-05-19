@@ -51,8 +51,8 @@ function DigestPage() {
                 </p>
                 {!hasEmail && (
                   <p className="mt-2 text-xs text-amber-500/90">
-                    Sign in with GitHub using an account that shares your email (user:email scope) to enable
-                    delivery.
+                    We could not read an email from GitHub yet. Sign out, then sign in again so CodePulse can
+                    sync it (GitHub → Settings → Emails must have a verified address).
                   </p>
                 )}
               </div>

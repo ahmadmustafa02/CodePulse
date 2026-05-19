@@ -1,10 +1,12 @@
 /** GitHub OAuth: authorize URL and code exchange for user identity. */
 
 import { env } from '../config/env';
+import logger from '../utils/logger';
 
 const GITHUB_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const GITHUB_USER_URL = 'https://api.github.com/user';
+const GITHUB_USER_EMAILS_URL = 'https://api.github.com/user/emails';
 
 export type GitHubOAuthProfile = {
   githubLogin: string;
@@ -20,6 +22,39 @@ export function buildGitHubAuthorizeUrl(): string {
     scope: 'read:user user:email',
   });
   return `${GITHUB_AUTHORIZE_URL}?${params.toString()}`;
+}
+
+type GitHubEmailEntry = {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+};
+
+async function fetchPrimaryEmail(accessToken: string): Promise<string | null> {
+  const res = await fetch(GITHUB_USER_EMAILS_URL, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    logger.warn('GitHub user emails fetch failed', { status: res.status });
+    return null;
+  }
+
+  const emails = (await res.json()) as GitHubEmailEntry[];
+  const primaryVerified = emails.find((entry) => entry.primary && entry.verified);
+  if (primaryVerified) {
+    return primaryVerified.email;
+  }
+
+  const anyVerified = emails.find((entry) => entry.verified);
+  if (anyVerified) {
+    return anyVerified.email;
+  }
+
+  return emails[0]?.email ?? null;
 }
 
 export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthProfile> {
@@ -63,10 +98,21 @@ export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthP
     email?: string | null;
   };
 
+  let email = user.email?.trim() || null;
+  if (!email) {
+    email = await fetchPrimaryEmail(tokenJson.access_token);
+  }
+
+  if (!email) {
+    logger.warn('GitHub OAuth: no email returned from profile or /user/emails', {
+      githubLogin: user.login,
+    });
+  }
+
   return {
     githubLogin: user.login,
     githubUserId: BigInt(user.id),
     avatarUrl: user.avatar_url ?? null,
-    email: user.email ?? null,
+    email,
   };
 }
