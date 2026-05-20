@@ -169,4 +169,20 @@ model User {
   installationId      Int?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  deviceTokens DeviceToken[]
+}
+
+model DeviceToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  name       String
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([tokenHash])
 }

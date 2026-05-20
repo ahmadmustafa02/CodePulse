@@ -9,6 +9,8 @@ import { buildGitHubAuthorizeUrl, exchangeCodeForProfile } from '../services/oau
 import {
   clearUserSessionCookie,
   getUserFromRequest,
+  getUserSessionFromCookie,
+  ensureBearerNotInvalid,
   setUserSessionCookie,
 } from '../services/sessionService';
 import type { UserSession } from '../types/session';
@@ -63,7 +65,7 @@ authRouter.get('/github/callback', async (req, res) => {
 });
 
 authRouter.get('/installation/callback', async (req, res) => {
-  const session = getUserFromRequest(req);
+  const session = getUserSessionFromCookie(req);
   if (!session) {
     logger.warn('Installation callback without logged-in user');
     res.redirect(`${env.WEB_APP_URL}/?error=install_failed`);
@@ -100,13 +102,15 @@ authRouter.get('/installation/callback', async (req, res) => {
   res.redirect(`${env.WEB_APP_URL}/dashboard`);
 });
 
-authRouter.get('/session', (req, res) => {
-  const session = getUserFromRequest(req);
-  if (!session) {
+authRouter.get('/session', async (req, res) => {
+  const auth = await getUserFromRequest(req);
+  if (!ensureBearerNotInvalid(auth, res)) return;
+  if (auth.type === 'none') {
     res.status(HTTP_STATUS_OK).json({ success: true, data: null });
     return;
   }
 
+  const session = auth.session;
   res.status(HTTP_STATUS_OK).json({
     success: true,
     data: {

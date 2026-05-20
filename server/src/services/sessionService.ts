@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
+import { HTTP_STATUS_UNAUTHORIZED } from '../config/constants';
 import { env } from '../config/env';
 import type { UserSession, UserSessionPayload } from '../types/session';
+import { verifyDeviceToken } from './deviceTokenService';
 
 const COOKIE_NAME = 'codepulse_session';
 const MAX_AGE_SEC = 60 * 60 * 24 * 30;
@@ -43,11 +45,53 @@ function parseCookies(header: string | undefined): Record<string, string> {
   );
 }
 
-export function getUserFromRequest(req: Request): UserSession | null {
+export type SessionResult =
+  | { type: 'session'; session: UserSession }
+  | { type: 'none' }
+  | { type: 'bearer_invalid' };
+
+export function ensureBearerNotInvalid(
+  auth: SessionResult,
+  res: Response,
+): auth is { type: 'session'; session: UserSession } | { type: 'none' } {
+  if (auth.type === 'bearer_invalid') {
+    res.status(HTTP_STATUS_UNAUTHORIZED).json({
+      success: false,
+      message: 'Invalid or revoked access token',
+    });
+    return false;
+  }
+  return true;
+}
+
+export function getUserSessionFromCookie(req: Request): UserSession | null {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
   return verifyUserSession(token);
+}
+
+export async function getUserFromRequest(req: Request): Promise<SessionResult> {
+  const auth = req.headers.authorization;
+  if (typeof auth === 'string') {
+    const match = auth.match(/^Bearer\s+(.*)$/i);
+    if (match) {
+      const raw = match[1].trim();
+      if (raw.startsWith('cpat_')) {
+        const session = await verifyDeviceToken(raw);
+        if (!session) {
+          return { type: 'bearer_invalid' };
+        }
+        return { type: 'session', session };
+      }
+    }
+  }
+
+  const cookieSession = getUserSessionFromCookie(req);
+  if (cookieSession) {
+    return { type: 'session', session: cookieSession };
+  }
+  return { type: 'none' };
 }
 
 function sessionCookieHeader(token: string, maxAgeSec: number): string {

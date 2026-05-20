@@ -12,7 +12,7 @@ import {
 } from '../config/constants';
 import { verifyDigestSecret } from '../middleware/verifyDigestSecret';
 import { digestService } from '../services/digestService';
-import { getUserFromRequest } from '../services/sessionService';
+import { getUserFromRequest, ensureBearerNotInvalid } from '../services/sessionService';
 import logger from '../utils/logger';
 
 const triggerBodySchema = z.object({
@@ -33,15 +33,16 @@ digestRouter.get(DIGEST_HEALTH_ROUTE, (_req, res) => {
 });
 
 digestRouter.get(DIGEST_PREFERENCES_ROUTE, async (req, res) => {
-  const session = getUserFromRequest(req);
-  if (!session) {
+  const auth = await getUserFromRequest(req);
+  if (!ensureBearerNotInvalid(auth, res)) return;
+  if (auth.type === 'none') {
     res.status(HTTP_STATUS_UNAUTHORIZED).json({
       success: false,
       message: 'Sign in required',
     });
     return;
   }
-
+  const session = auth.session;
   const preferences = await digestService.getPreferences(BigInt(session.githubUserId));
   if (!preferences) {
     res.status(HTTP_STATUS_UNAUTHORIZED).json({
@@ -56,15 +57,16 @@ digestRouter.get(DIGEST_PREFERENCES_ROUTE, async (req, res) => {
 
 digestRouter.patch(DIGEST_PREFERENCES_ROUTE, async (req, res, next) => {
   try {
-    const session = getUserFromRequest(req);
-    if (!session) {
+    const auth = await getUserFromRequest(req);
+    if (!ensureBearerNotInvalid(auth, res)) return;
+    if (auth.type === 'none') {
       res.status(HTTP_STATUS_UNAUTHORIZED).json({
         success: false,
         message: 'Sign in required',
       });
       return;
     }
-
+    const session = auth.session;
     const parsed = preferencesBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(HTTP_STATUS_BAD_REQUEST).json({

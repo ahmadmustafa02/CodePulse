@@ -20,6 +20,8 @@ const LOCAL_ORIGINS = [
   'http://localhost:8080',
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://localhost',
+  'capacitor://localhost',
 ];
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
@@ -50,6 +52,7 @@ app.use(
       callback(new Error(`CORS blocked origin: ${origin}`));
     },
     credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type'],
   }),
 );
 // express.json() is NOT applied globally: GitHub HMAC verification requires the raw

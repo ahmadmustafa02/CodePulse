@@ -4,22 +4,23 @@ import { Router } from 'express';
 import { HTTP_STATUS_OK, HTTP_STATUS_UNAUTHORIZED } from '../config/constants';
 import { databaseService } from '../services/databaseService';
 import { getOrganizationIdByInstallationId } from '../services/statsService';
-import { getUserFromRequest } from '../services/sessionService';
+import { getUserFromRequest, ensureBearerNotInvalid } from '../services/sessionService';
 import logger from '../utils/logger';
 
 export const tracesRouter = Router();
 
 tracesRouter.get('/:pullRequestId', async (req, res, next) => {
   try {
-    const session = getUserFromRequest(req);
-    if (!session) {
+    const auth = await getUserFromRequest(req);
+    if (!ensureBearerNotInvalid(auth, res)) return;
+    if (auth.type === 'none') {
       res.status(HTTP_STATUS_UNAUTHORIZED).json({
         success: false,
         message: 'Sign in required',
       });
       return;
     }
-
+    const session = auth.session;
     if (session.installationId === null) {
       res.status(404).json({
         success: false,
