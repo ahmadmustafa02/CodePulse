@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import type {
   ApiResponse,
   UserSession,
@@ -11,7 +12,11 @@ import type {
 import type { Severity } from "@/lib/severity";
 import { normalizeSeverity } from "@/lib/severity";
 
-function resolveApiBaseUrl(): string {
+/** API base for fetch calls. Native WebView uses absolute Azure URL; browser behavior unchanged. */
+export function getApiBaseUrl(): string {
+  if (Capacitor.isNativePlatform()) {
+    return "https://thecodepulse.azurewebsites.net/api/v1";
+  }
   const fromEnv = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
   if (typeof window !== "undefined") {
     const { hostname } = window.location;
@@ -25,7 +30,7 @@ function resolveApiBaseUrl(): string {
   return fromEnv ?? "http://localhost:3001/api/v1";
 }
 
-export const apiBaseUrl = resolveApiBaseUrl();
+export const apiBaseUrl = getApiBaseUrl();
 
 const AGENT_TRACE_KINDS = new Set<AgentTraceLogEntry["kind"]>([
   "session",
@@ -74,7 +79,7 @@ function normalizeAgentTraceLogEntry(raw: unknown): AgentTraceLogEntry | null {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     credentials: init?.credentials ?? "include",
     headers: {
@@ -88,11 +93,68 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return json.data;
 }
 
+async function apiFetchNoContent(path: string, init?: RequestInit): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    ...init,
+    credentials: init?.credentials ?? "include",
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+  });
+  if (response.ok && response.status === 204) {
+    return;
+  }
+  if (!response.ok) {
+    let message = `API error: ${response.status}`;
+    try {
+      const json = (await response.json()) as ApiResponse<unknown>;
+      if (!json.success && typeof json.message === "string") {
+        message = json.message;
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+}
+
 export const getStats = () => apiFetch<DashboardStats>("/stats");
 export const getRepositories = () => apiFetch<RepositoryItem[]>("/repositories");
 export const getReviews = () => apiFetch<ReviewItem[]>("/reviews");
 export const getTeam = () => apiFetch<TeamMember[]>("/team");
 export const getSession = () => apiFetch<UserSession | null>("/auth/session");
+
+export type DeviceToken = {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+};
+
+export type CreateDeviceTokenResult = {
+  id: string;
+  name: string;
+  token: string;
+  createdAt: string;
+};
+
+export async function listDeviceTokens(): Promise<DeviceToken[]> {
+  const data = await apiFetch<{ tokens: DeviceToken[] }>("/auth/device-tokens");
+  return data.tokens;
+}
+
+export async function createDeviceToken(name: string): Promise<CreateDeviceTokenResult> {
+  return apiFetch<CreateDeviceTokenResult>("/auth/device-tokens", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function revokeDeviceToken(id: string): Promise<void> {
+  await apiFetchNoContent(`/auth/device-tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
 
 export async function logout(): Promise<void> {
   await apiFetch<null>("/auth/logout", { method: "POST" });
@@ -113,7 +175,7 @@ export const updateDigestPreferences = (digestEmailEnabled: boolean) =>
 
 export async function getAgentTracesForPullRequest(pullRequestId: string): Promise<AgentTracePollPayload> {
   const id = encodeURIComponent(pullRequestId);
-  const response = await fetch(`${apiBaseUrl}/traces/${id}`, {
+  const response = await fetch(`${getApiBaseUrl()}/traces/${id}`, {
     credentials: "include",
   });
   if (response.status === 404) {

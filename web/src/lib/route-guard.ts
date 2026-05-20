@@ -1,5 +1,6 @@
 import { redirect } from "@tanstack/react-router";
 import { fetchSession, isLoggedIn } from "@/lib/auth";
+import { defaultLandingSearch } from "@/lib/constants";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -17,6 +18,6 @@ export async function ensureLoggedIn(): Promise<void> {
   if (!isBrowser()) return;
   const session = await fetchSession();
   if (!isLoggedIn(session)) {
-    throw redirect({ to: "/", search: {} });
+    throw redirect({ to: "/", search: defaultLandingSearch });
   }
 }

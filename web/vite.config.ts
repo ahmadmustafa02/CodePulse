@@ -43,7 +43,6 @@ export default defineConfig(({ mode }) => {
           autoStaticPathsDiscovery: true,
           crawlLinks: true,
           failOnError: false,
-          pages: [{ path: "/login" }],
         },
       }),
       react(),

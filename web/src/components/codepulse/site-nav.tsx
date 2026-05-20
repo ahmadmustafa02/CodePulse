@@ -1,12 +1,17 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Github, LayoutDashboard, LogOut } from "lucide-react";
+import { Github, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
 import { fetchSession, signOut } from "@/lib/auth";
+import { defaultLandingSearch } from "@/lib/constants";
 
 export function CodePulseMark({ to = "/" }: { to?: "/" | "/dashboard" }) {
   return (
-    <Link to={to} className="flex items-center gap-2.5">
+    <Link
+      to={to}
+      {...(to === "/" ? { search: defaultLandingSearch } : {})}
+      className="flex items-center gap-2.5"
+    >
       <img
         src="/favicon.png"
         alt=""
@@ -32,7 +37,7 @@ export function SiteNav() {
   async function handleSignOut() {
     await signOut();
     await sessionQ.refetch();
-    router.navigate({ to: "/", search: {} });
+    router.navigate({ to: "/", search: defaultLandingSearch });
   }
 
   const logoTo = session ? "/dashboard" : "/";
@@ -50,6 +55,13 @@ export function SiteNav() {
               >
                 <LayoutDashboard className="size-4" />
                 Dashboard
+              </Link>
+              <Link
+                to="/settings"
+                className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+              >
+                <Settings className="size-4" />
+                Settings
               </Link>
               <div className="hidden items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 py-1 pl-1 pr-3 text-xs sm:flex">
                 {session.avatarUrl ? (

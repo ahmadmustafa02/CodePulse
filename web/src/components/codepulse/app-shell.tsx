@@ -12,6 +12,7 @@ import {
 import { CodePulseMark } from "./site-nav";
 import { fetchSession, hasInstallation, signOut } from "@/lib/auth";
 import { api, type DeveloperRow, type RepoRow } from "@/lib/api";
+import { defaultLandingSearch } from "@/lib/constants";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -98,7 +99,7 @@ export function AppShell({
 
   async function handleSignOut() {
     await signOut();
-    router.navigate({ to: "/", search: {} });
+    router.navigate({ to: "/", search: defaultLandingSearch });
   }
 
   return (

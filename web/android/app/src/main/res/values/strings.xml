@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CodePulse</string>
+    <string name="title_activity_main">CodePulse</string>
+    <string name="package_name">com.codepulse.app</string>
+    <string name="custom_url_scheme">com.codepulse.app</string>
+</resources>

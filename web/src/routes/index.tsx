@@ -6,6 +6,7 @@ import { HeroCodePreview } from "@/components/codepulse/code-preview";
 import { SeverityStackBar } from "@/components/codepulse/charts";
 import { Panel } from "@/components/codepulse/panel";
 import { redirectIfLoggedIn } from "@/lib/route-guard";
+import { defaultLandingSearch } from "@/lib/constants";
 
 const DEMO_WEEKLY_SEVERITY = [
   { week: "Week 1", critical: 3, high: 8, medium: 12, low: 5 },
@@ -161,9 +162,9 @@ function LandingPage() {
       <footer className="border-t border-zinc-900/60 py-12 text-center">
         <p className="mb-4 text-[11px] font-medium uppercase tracking-widest text-zinc-600">Protected by SOC2 Type II</p>
         <div className="flex justify-center gap-6 text-xs text-zinc-500">
-          <Link to="/" className="hover:text-zinc-300">Privacy</Link>
-          <Link to="/" className="hover:text-zinc-300">Terms</Link>
-          <Link to="/" className="hover:text-zinc-300">Security</Link>
+          <Link to="/" search={defaultLandingSearch} className="hover:text-zinc-300">Privacy</Link>
+          <Link to="/" search={defaultLandingSearch} className="hover:text-zinc-300">Terms</Link>
+          <Link to="/" search={defaultLandingSearch} className="hover:text-zinc-300">Security</Link>
         </div>
       </footer>
     </div>

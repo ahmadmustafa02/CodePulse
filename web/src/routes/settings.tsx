@@ -5,6 +5,7 @@ import { AlertTriangle, Github, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/codepulse/app-shell";
 import { InstallAppBanner } from "@/components/codepulse/install-app-banner";
+import { DeviceTokensSection } from "@/components/codepulse/device-tokens-section";
 import { Panel, PanelHeader } from "@/components/codepulse/panel";
 import { ListSkeleton } from "@/components/codepulse/skeletons";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ import {
   updateRepositoryEscalationSettings,
 } from "@/lib/api";
 import { fetchSession, hasInstallation, signOut } from "@/lib/auth";
-import { GITHUB_APP_INSTALL_URL, githubInstallationSettingsUrl } from "@/lib/constants";
+import { GITHUB_APP_INSTALL_URL, githubInstallationSettingsUrl, defaultLandingSearch } from "@/lib/constants";
 import { ensureLoggedIn } from "@/lib/route-guard";
 
 export const Route = createFileRoute("/settings")({
@@ -100,7 +101,7 @@ function SettingsPage() {
     try {
       await signOut();
       queryClient.clear();
-      await router.navigate({ to: "/", search: {} });
+      await router.navigate({ to: "/", search: defaultLandingSearch });
     } finally {
       setDisconnecting(false);
     }
@@ -112,11 +113,37 @@ function SettingsPage() {
     <AppShell eyebrow="Workspace" title="Settings">
       {!installed && !sessionQ.isLoading ? <InstallAppBanner /> : null}
 
+      <nav
+        aria-label="Settings sections"
+        className="mb-6 flex flex-wrap gap-1 border-b border-zinc-800/60 pb-4 text-sm"
+      >
+        {(
+          [
+            ["#github-account", "GitHub"],
+            ["#device-tokens", "Device tokens"],
+            ["#connected-repos", "Repositories"],
+            ["#escalation", "Escalation"],
+            ["#review-rules", "Review rules"],
+            ["#digest-cadence", "Digest"],
+            ["#danger-zone", "Danger zone"],
+          ] as const
+        ).map(([href, label]) => (
+          <a
+            key={href}
+            href={href}
+            className="rounded-md px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           {session ? (
-            <Panel>
-              <PanelHeader title="GitHub account" hint="Signed in via GitHub OAuth." />
+            <section id="github-account" className="scroll-mt-24">
+              <Panel>
+                <PanelHeader title="GitHub account" hint="Signed in via GitHub OAuth." />
               <div className="flex items-center gap-4">
                 {session.avatarUrl ? (
                   <img
@@ -139,7 +166,10 @@ function SettingsPage() {
                 </div>
               </div>
             </Panel>
+            </section>
           ) : null}
+
+          <DeviceTokensSection />
 
           {!installed ? (
             <Panel>
@@ -157,6 +187,7 @@ function SettingsPage() {
           ) : repos.isLoading || !repos.data ? (
             <ListSkeleton rows={4} />
           ) : (
+            <section id="connected-repos" className="scroll-mt-24">
             <Panel padded={false}>
               <div className="flex items-center justify-between border-b border-zinc-800/60 px-6 py-4">
                 <div>
@@ -184,9 +215,11 @@ function SettingsPage() {
                 ))}
               </ul>
             </Panel>
+            </section>
           )}
 
           {installed && repos.data && repos.data.length > 0 ? (
+            <section id="escalation" className="scroll-mt-24">
             <Panel className="ring-1 ring-orange-500/15">
               <PanelHeader
                 title="🔒 Critical Security Escalation Settings"
@@ -261,8 +294,10 @@ function SettingsPage() {
                 </div>
               </div>
             </Panel>
+            </section>
           ) : null}
 
+          <section id="review-rules" className="scroll-mt-24">
           <Panel>
             <PanelHeader title="Review rules" hint="Toggle which patterns CodePulse reports." />
             <ComingSoonNote />
@@ -283,9 +318,11 @@ function SettingsPage() {
               ))}
             </ul>
           </Panel>
+          </section>
         </div>
 
         <div className="space-y-6">
+          <section id="digest-cadence" className="scroll-mt-24">
           <Panel>
             <PanelHeader title="Digest cadence" hint="When to send the weekly learning email." />
             <ComingSoonNote />
@@ -307,7 +344,9 @@ function SettingsPage() {
               ))}
             </div>
           </Panel>
+          </section>
 
+          <section id="danger-zone" className="scroll-mt-24">
           <Panel>
             <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-widest" style={{ color: "#ef4444" }}>
               <AlertTriangle className="size-3.5" /> Danger zone
@@ -324,6 +363,7 @@ function SettingsPage() {
               <Trash2 className="size-3.5" /> {disconnecting ? "Disconnecting…" : "Disconnect"}
             </button>
           </Panel>
+          </section>
         </div>
       </div>
     </AppShell>
