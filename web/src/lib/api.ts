@@ -16,7 +16,7 @@ import { normalizeSeverity } from "@/lib/severity";
 /** API base for fetch calls. Native WebView uses absolute Azure URL; browser behavior unchanged. */
 export function getApiBaseUrl(): string {
   if (Capacitor.isNativePlatform()) {
-    return "https://thecodepulse.azurewebsites.net/api/v1";
+    return "https://thecodepulse-b0ayhharhze8hjhp.southeastasia-01.azurewebsites.net/api/v1";
   }
   const fromEnv = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
   if (typeof window !== "undefined") {
