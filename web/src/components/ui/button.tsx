@@ -1,49 +1,67 @@
-/** Primary and secondary buttons following DESIGN.md tokens. */
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
 
-import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { cn } from "@/lib/utils";
 
-type ButtonProps = {
-  children: ReactNode;
-  href?: string;
-  onClick?: () => void;
-  /** Use `submit` inside `<form>` so the form action runs (default is `button`). */
-  type?: 'button' | 'submit' | 'reset';
-  variant?: 'primary' | 'secondary';
-  className?: string;
-};
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+        primary: "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+        outline: "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2",
+        sm: "h-8 rounded-md px-3 text-xs",
+        lg: "h-10 rounded-md px-8",
+        icon: "h-9 w-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
 
-const base =
-  'inline-flex items-center justify-center rounded-[8px] px-[14px] py-[8px] text-[14px] font-medium leading-[1.2] transition-colors';
+export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+    href?: string;
+  };
 
-const variants = {
-  primary:
-    'bg-primary text-on-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary-focus/50',
-  secondary:
-    'border border-hairline bg-surface-1 text-ink hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary-focus/50',
-};
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, href, type = "button", ...props }, ref) => {
+    const classes = cn(buttonVariants({ variant, size, className }));
 
-export function Button({
-  children,
-  href,
-  onClick,
-  type = 'button',
-  variant = 'primary',
-  className = '',
-}: ButtonProps) {
-  const classes = `${base} ${variants[variant]} ${className}`;
+    if (href) {
+      return (
+        <a
+          href={href}
+          className={classes}
+          {...(props as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
+        />
+      );
+    }
 
-  if (href) {
+    const Comp = asChild ? Slot : "button";
     return (
-      <Link href={href} className={classes}>
-        {children}
-      </Link>
+      <Comp
+        type={asChild ? undefined : type}
+        className={classes}
+        ref={ref as React.Ref<HTMLButtonElement>}
+        {...props}
+      />
     );
-  }
+  },
+);
+Button.displayName = "Button";
 
-  return (
-    <button type={type} onClick={onClick} className={classes}>
-      {children}
-    </button>
-  );
-}
+export { Button, buttonVariants };
