@@ -27,6 +27,7 @@ model Repository {
   name           String
   fullName       String   @unique
   private        Boolean  @default(false)
+  deploymentState String?
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
