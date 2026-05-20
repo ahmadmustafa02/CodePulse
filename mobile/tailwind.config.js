@@ -1,0 +1,55 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
+  presets: [require("nativewind/preset")],
+  theme: {
+    extend: {
+      colors: {
+        background: "#09090b",
+        foreground: "#fafafa",
+        canvas: "#09090b",
+        surface: "#18181b",
+        card: "#18181b",
+        "card-foreground": "#fafafa",
+        muted: "#18181b",
+        "muted-foreground": "#a1a1aa",
+        border: "rgba(255, 255, 255, 0.08)",
+        input: "rgba(255, 255, 255, 0.1)",
+        ring: "#52525b",
+        primary: "#fafafa",
+        "primary-foreground": "#09090b",
+        secondary: "#27272a",
+        "secondary-foreground": "#fafafa",
+        destructive: "#ef4444",
+        critical: "#ef4444",
+        high: "#f97316",
+        medium: "#eab308",
+        low: "#22c55e",
+        "chart-1": "#ef4444",
+        "chart-2": "#f97316",
+        "chart-3": "#eab308",
+        "chart-4": "#22c55e",
+        "chart-5": "#a1a1aa",
+        "agent-console": "#09090b",
+        "agent-console-inner": "#050506",
+        "agent-console-border": "#27272a",
+      },
+      fontFamily: {
+        sans: ["Inter_400Regular", "Inter_500Medium", "system-ui", "sans-serif"],
+        mono: ["JetBrainsMono_400Regular", "JetBrainsMono_500Medium", "monospace"],
+      },
+      borderRadius: {
+        lg: "0.625rem",
+        xl: "0.75rem",
+      },
+      boxShadow: {
+        panel: "inset 0 1px 0 rgba(255,255,255,0.04)",
+        "panel-ring": "0 0 0 1px rgba(255,255,255,0.05)",
+      },
+      spacing: {
+        18: "4.5rem",
+      },
+    },
+  },
+  plugins: [],
+};

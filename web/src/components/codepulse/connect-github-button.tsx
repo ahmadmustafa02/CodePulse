@@ -1,5 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
 import { useState } from "react";
 import { ArrowRight, Github } from "lucide-react";
 import { fetchSession, isLoggedIn, startGitHubOAuth } from "@/lib/auth";
@@ -29,6 +30,10 @@ export function ConnectGitHubButton({
       });
       if (isLoggedIn(session)) {
         await router.navigate({ to: "/dashboard" });
+        return;
+      }
+      if (Capacitor.isNativePlatform()) {
+        await router.navigate({ to: "/mobile-sign-in" });
         return;
       }
       startGitHubOAuth();

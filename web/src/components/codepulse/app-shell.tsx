@@ -1,5 +1,6 @@
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
 import {
   Github,
   LayoutDashboard,
@@ -71,6 +72,7 @@ export function AppShell({
 }) {
   const router = useRouter();
   const { pathname } = useLocation();
+  const queryClient = useQueryClient();
 
   const sessionQ = useQuery({
     queryKey: ["session"],
@@ -99,7 +101,12 @@ export function AppShell({
 
   async function handleSignOut() {
     await signOut();
-    router.navigate({ to: "/", search: defaultLandingSearch });
+    await queryClient.invalidateQueries({ queryKey: ["session"] });
+    if (Capacitor.isNativePlatform()) {
+      await router.navigate({ to: "/mobile-sign-in" });
+    } else {
+      await router.navigate({ to: "/", search: defaultLandingSearch });
+    }
   }
 
   return (

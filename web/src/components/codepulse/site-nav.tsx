@@ -1,5 +1,6 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
 import { Github, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
 import { fetchSession, signOut } from "@/lib/auth";
@@ -26,6 +27,7 @@ export function CodePulseMark({ to = "/" }: { to?: "/" | "/dashboard" }) {
 
 export function SiteNav() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const sessionQ = useQuery({
     queryKey: ["session"],
     queryFn: fetchSession,
@@ -36,8 +38,12 @@ export function SiteNav() {
 
   async function handleSignOut() {
     await signOut();
-    await sessionQ.refetch();
-    router.navigate({ to: "/", search: defaultLandingSearch });
+    await queryClient.invalidateQueries({ queryKey: ["session"] });
+    if (Capacitor.isNativePlatform()) {
+      await router.navigate({ to: "/mobile-sign-in" });
+    } else {
+      await router.navigate({ to: "/", search: defaultLandingSearch });
+    }
   }
 
   const logoTo = session ? "/dashboard" : "/";

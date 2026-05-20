@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { getStoredToken } from "@/lib/native-auth";
 import type {
   ApiResponse,
   UserSession,
@@ -78,15 +79,25 @@ function normalizeAgentTraceLogEntry(raw: unknown): AgentTraceLogEntry | null {
   };
 }
 
+async function buildAuthRequestInit(init?: RequestInit): Promise<RequestInit> {
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  let credentials: RequestCredentials = init?.credentials ?? "include";
+  if (Capacitor.isNativePlatform()) {
+    credentials = "omit";
+    const token = await getStoredToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+  return { ...init, headers, credentials };
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    credentials: init?.credentials ?? "include",
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  const merged = await buildAuthRequestInit(init);
+  const response = await fetch(`${getApiBaseUrl()}${path}`, merged);
   if (!response.ok) throw new Error(`API error: ${response.status}`);
   const json = (await response.json()) as ApiResponse<T>;
   if (!json.success) throw new Error(json.message ?? "API request failed");
@@ -94,14 +105,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function apiFetchNoContent(path: string, init?: RequestInit): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    credentials: init?.credentials ?? "include",
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  const merged = await buildAuthRequestInit(init);
+  const response = await fetch(`${getApiBaseUrl()}${path}`, merged);
   if (response.ok && response.status === 204) {
     return;
   }
@@ -124,6 +129,49 @@ export const getRepositories = () => apiFetch<RepositoryItem[]>("/repositories")
 export const getReviews = () => apiFetch<ReviewItem[]>("/reviews");
 export const getTeam = () => apiFetch<TeamMember[]>("/team");
 export const getSession = () => apiFetch<UserSession | null>("/auth/session");
+
+type AuthMeResponse = {
+  user: {
+    githubLogin: string;
+    avatarUrl: string | null;
+    installationId: number | null;
+  };
+  organization: unknown;
+};
+
+export async function getAuthMe(): Promise<UserSession> {
+  const data = await apiFetch<AuthMeResponse>("/auth/me");
+  return {
+    githubLogin: data.user.githubLogin,
+    avatarUrl: data.user.avatarUrl,
+    installationId: data.user.installationId,
+  };
+}
+
+/** Validate a pasted token before persisting (does not use stored Preferences). */
+export async function fetchAuthMeWithBearerToken(rawToken: string): Promise<UserSession> {
+  const trimmed = rawToken.trim();
+  const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${trimmed}` },
+    credentials: "omit",
+  });
+  if (response.status === 401) {
+    throw new Error("Invalid or expired token.");
+  }
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+  const json = (await response.json()) as ApiResponse<AuthMeResponse>;
+  if (!json.success) {
+    throw new Error(json.message ?? "API request failed");
+  }
+  return {
+    githubLogin: json.data.user.githubLogin,
+    avatarUrl: json.data.user.avatarUrl,
+    installationId: json.data.user.installationId,
+  };
+}
 
 export type DeviceToken = {
   id: string;
@@ -175,9 +223,8 @@ export const updateDigestPreferences = (digestEmailEnabled: boolean) =>
 
 export async function getAgentTracesForPullRequest(pullRequestId: string): Promise<AgentTracePollPayload> {
   const id = encodeURIComponent(pullRequestId);
-  const response = await fetch(`${getApiBaseUrl()}/traces/${id}`, {
-    credentials: "include",
-  });
+  const merged = await buildAuthRequestInit({ method: "GET" });
+  const response = await fetch(`${getApiBaseUrl()}/traces/${id}`, merged);
   if (response.status === 404) {
     return { logs: [], traceId: null, fetchedAt: new Date().toISOString() };
   }

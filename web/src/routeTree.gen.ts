@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as MobileSignInRouteImport } from './routes/mobile-sign-in'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DigestRouteImport } from './routes/digest'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -25,6 +26,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MobileSignInRoute = MobileSignInRouteImport.update({
+  id: '/mobile-sign-in',
+  path: '/mobile-sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DigestRoute = DigestRouteImport.update({
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/digest': typeof DigestRoute
   '/login': typeof LoginRoute
+  '/mobile-sign-in': typeof MobileSignInRoute
   '/settings': typeof SettingsRoute
   '/developers/$id': typeof DevelopersIdRoute
   '/repos/$owner/$repo': typeof ReposOwnerRepoRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/digest': typeof DigestRoute
   '/login': typeof LoginRoute
+  '/mobile-sign-in': typeof MobileSignInRoute
   '/settings': typeof SettingsRoute
   '/developers/$id': typeof DevelopersIdRoute
   '/repos/$owner/$repo': typeof ReposOwnerRepoRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/digest': typeof DigestRoute
   '/login': typeof LoginRoute
+  '/mobile-sign-in': typeof MobileSignInRoute
   '/settings': typeof SettingsRoute
   '/developers/$id': typeof DevelopersIdRoute
   '/repos/$owner/$repo': typeof ReposOwnerRepoRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/digest'
     | '/login'
+    | '/mobile-sign-in'
     | '/settings'
     | '/developers/$id'
     | '/repos/$owner/$repo'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/digest'
     | '/login'
+    | '/mobile-sign-in'
     | '/settings'
     | '/developers/$id'
     | '/repos/$owner/$repo'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/digest'
     | '/login'
+    | '/mobile-sign-in'
     | '/settings'
     | '/developers/$id'
     | '/repos/$owner/$repo'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DigestRoute: typeof DigestRoute
   LoginRoute: typeof LoginRoute
+  MobileSignInRoute: typeof MobileSignInRoute
   SettingsRoute: typeof SettingsRoute
   DevelopersIdRoute: typeof DevelopersIdRoute
   ReposOwnerRepoRoute: typeof ReposOwnerRepoRoute
@@ -135,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mobile-sign-in': {
+      id: '/mobile-sign-in'
+      path: '/mobile-sign-in'
+      fullPath: '/mobile-sign-in'
+      preLoaderRoute: typeof MobileSignInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/digest': {
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DigestRoute: DigestRoute,
   LoginRoute: LoginRoute,
+  MobileSignInRoute: MobileSignInRoute,
   SettingsRoute: SettingsRoute,
   DevelopersIdRoute: DevelopersIdRoute,
   ReposOwnerRepoRoute: ReposOwnerRepoRoute,

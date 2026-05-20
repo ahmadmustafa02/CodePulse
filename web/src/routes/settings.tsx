@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { AlertTriangle, Github, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/codepulse/app-shell";
@@ -101,7 +102,11 @@ function SettingsPage() {
     try {
       await signOut();
       queryClient.clear();
-      await router.navigate({ to: "/", search: defaultLandingSearch });
+      if (Capacitor.isNativePlatform()) {
+        await router.navigate({ to: "/mobile-sign-in" });
+      } else {
+        await router.navigate({ to: "/", search: defaultLandingSearch });
+      }
     } finally {
       setDisconnecting(false);
     }
@@ -125,7 +130,7 @@ function SettingsPage() {
             ["#escalation", "Escalation"],
             ["#review-rules", "Review rules"],
             ["#digest-cadence", "Digest"],
-            ["#danger-zone", "Danger zone"],
+            ["#danger-zone", "Sign out"],
           ] as const
         ).map(([href, label]) => (
           <a
@@ -349,10 +354,12 @@ function SettingsPage() {
           <section id="danger-zone" className="scroll-mt-24">
           <Panel>
             <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-widest" style={{ color: "#ef4444" }}>
-              <AlertTriangle className="size-3.5" /> Danger zone
+              <AlertTriangle className="size-3.5" /> Sign out
             </div>
             <p className="mb-4 text-xs text-zinc-500">
-              Disconnecting signs you out and clears your session. Existing GitHub review comments stay in place.
+              {Capacitor.isNativePlatform()
+                ? "This removes the device token from this device. Generate a new token on the web if you sign in again."
+                : "Disconnecting signs you out and clears your session. Existing GitHub review comments stay in place."}
             </p>
             <button
               type="button"
@@ -360,7 +367,7 @@ function SettingsPage() {
               onClick={() => void handleDisconnect()}
               className="inline-flex items-center gap-2 rounded-md border border-[#ef4444]/40 bg-[#ef4444]/10 px-3 py-1.5 text-xs font-medium text-[#ef4444] hover:bg-[#ef4444]/15 disabled:opacity-50"
             >
-              <Trash2 className="size-3.5" /> {disconnecting ? "Disconnecting…" : "Disconnect"}
+              <Trash2 className="size-3.5" /> {disconnecting ? "Signing out…" : "Sign out"}
             </button>
           </Panel>
           </section>
