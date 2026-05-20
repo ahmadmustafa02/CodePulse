@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getAgentTracesForPullRequest } from "@/lib/api";
-import type { AgentTraceLogEntry } from "@/types/api";
 import { cn } from "@/lib/utils";
+import type { AgentTraceLogEntry, AntigravityAgent } from "@/types/api";
 
 const POLL_MS = 1500;
 
@@ -10,18 +10,73 @@ export type AgentConsoleProps = {
   className?: string;
 };
 
-function formatLine(entry: AgentTraceLogEntry): string {
-  const ts = entry.timestamp || "—";
-  return `[${ts}] ${entry.agent}  ${entry.message}`;
+function readMeta(entry: AgentTraceLogEntry): Record<string, unknown> {
+  const m = entry.meta;
+  if (m && typeof m === "object" && !Array.isArray(m)) {
+    return m as Record<string, unknown>;
+  }
+  return {};
 }
 
-function lineClassName(entry: AgentTraceLogEntry): string {
+function showHandoffArrow(entry: AgentTraceLogEntry): boolean {
+  const meta = readMeta(entry);
+  if (entry.kind === "transition") {
+    return true;
+  }
+  return typeof meta.previous_interaction_id === "string" && meta.previous_interaction_id.length > 0;
+}
+
+function isOrchestratorGateEntry(entry: AgentTraceLogEntry): boolean {
+  const meta = readMeta(entry);
+  return (
+    entry.agent === "@Orchestrator" &&
+    entry.kind === "thought" &&
+    typeof meta.reviewCount === "number" &&
+    typeof meta.highRiskCount === "number"
+  );
+}
+
+const AGENT_BADGE: Record<AntigravityAgent, string> = {
+  "@Orchestrator":
+    "border-purple-500/40 bg-purple-500/15 text-purple-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  "@Triager":
+    "border-blue-500/40 bg-blue-500/15 text-blue-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  "@ReviewerSwarm":
+    "border-orange-500/40 bg-orange-500/15 text-orange-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  "@HabitAnalyzer":
+    "border-emerald-500/40 bg-emerald-500/15 text-emerald-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+};
+
+const PILL_BASE =
+  "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none tracking-wide";
+
+function AgentBadge({ agent }: { agent: AntigravityAgent }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full shrink-0 items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-none tracking-tight",
+        AGENT_BADGE[agent],
+      )}
+    >
+      {agent}
+    </span>
+  );
+}
+
+function lineClassName(entry: AgentTraceLogEntry, isGate: boolean): string {
   const kind = entry.kind;
   const agent = entry.agent;
   const msgUpper = entry.message.toUpperCase();
 
   const base =
-    "font-mono text-[12px] leading-relaxed [font-variant-ligatures:none] whitespace-pre-wrap break-words border-l-2 border-transparent pl-2 py-0.5";
+    "rounded-sm border-l-2 border-transparent pl-2 py-1 font-mono text-[12px] leading-relaxed [font-variant-ligatures:none] break-words";
+
+  if (isGate) {
+    return cn(
+      base,
+      "my-1.5 border border-violet-500/35 border-l-violet-400/80 bg-violet-950/30 py-2 pl-3 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+    );
+  }
 
   if (kind === "session" || kind === "transition") {
     return cn(base, "border-orange-500/60 font-semibold text-orange-400");
@@ -32,11 +87,11 @@ function lineClassName(entry: AgentTraceLogEntry): string {
   }
 
   if (agent === "@HabitAnalyzer") {
-    return cn(base, "text-amber-300");
+    return cn(base, "text-amber-200/90");
   }
 
   if (agent === "@Triager") {
-    return cn(base, "text-emerald-400");
+    return cn(base, "text-zinc-300");
   }
 
   if (agent === "@Orchestrator") {
@@ -44,10 +99,63 @@ function lineClassName(entry: AgentTraceLogEntry): string {
   }
 
   if (agent === "@ReviewerSwarm") {
-    return cn(base, "text-sky-300");
+    return cn(base, "text-zinc-300");
   }
 
   return cn(base, "text-zinc-400");
+}
+
+function LogRow({ entry }: { entry: AgentTraceLogEntry }) {
+  const meta = readMeta(entry);
+  const ts = entry.timestamp || "—";
+  const isGate = isOrchestratorGateEntry(entry);
+  const handoff = showHandoffArrow(entry);
+  const envAntigravity = meta.environment === "antigravity";
+  const reviewMode = meta.reviewMode;
+  const showReviewModeTag =
+    reviewMode === "deep" || reviewMode === "lightweight" ? String(reviewMode) : null;
+
+  return (
+    <div className={lineClassName(entry, isGate)}>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        {handoff ? (
+          <span className="shrink-0 font-mono text-[11px] font-semibold text-zinc-500" aria-hidden>
+            →
+          </span>
+        ) : null}
+        <AgentBadge agent={entry.agent} />
+        {envAntigravity ? (
+          <span
+            className={cn(
+              PILL_BASE,
+              "border-amber-500/35 bg-amber-500/10 text-amber-200/95",
+            )}
+          >
+            ⚡ Antigravity
+          </span>
+        ) : null}
+        {showReviewModeTag ? (
+          <span
+            className={cn(
+              PILL_BASE,
+              "border-zinc-600/80 bg-zinc-800/80 text-zinc-300",
+            )}
+          >
+            {showReviewModeTag}
+          </span>
+        ) : null}
+        <span className="font-mono text-[10px] text-zinc-600">[{ts}]</span>
+      </div>
+      <div
+        className={cn(
+          "mt-1 whitespace-pre-wrap pl-0.5",
+          isGate ? "text-[13px] font-medium leading-snug text-zinc-100" : "",
+        )}
+      >
+        {entry.message}
+      </div>
+    </div>
+  );
 }
 
 export function AgentConsole({ pullRequestId, className }: AgentConsoleProps) {
@@ -135,9 +243,7 @@ export function AgentConsole({ pullRequestId, className }: AgentConsoleProps) {
           <p className="px-2 py-1 font-mono text-xs text-zinc-600">Waiting for agent logs…</p>
         ) : (
           logs.map((entry, i) => (
-            <div key={`${entry.timestamp}-${i}`} className={lineClassName(entry)}>
-              {formatLine(entry)}
-            </div>
+            <LogRow key={`${entry.timestamp}-${i}`} entry={entry} />
           ))
         )}
 

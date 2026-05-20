@@ -2,6 +2,7 @@
 
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
+import type { Interactions } from '@google/genai';
 import { z } from 'zod';
 import {
   CODE_REVIEW_ISSUES_TOOL_NAME,
@@ -17,10 +18,12 @@ import type { AnalyzeDiffWorkspaceContext } from '../types/agentWorkspace';
 import type {
   AnalysisResult,
   DetectedIssue,
+  EscalationRecord,
   IssueCategory,
   IssueSeverity,
 } from '../types/analysis';
 import type { ParsedDiff, ParsedFile, ParsedFileStatus } from '../types/diff';
+import { ANTIGRAVITY_ENV, withAntigravityMeta } from '../utils/antigravityMeta';
 import {
   countReviewableLines,
   formatDiffForPrompt,
@@ -31,6 +34,22 @@ import { loadAgentsMd } from '../utils/loadAgentsMd';
 import { AntigravityWorkspaceSession } from './antigravityWorkspaceSession';
 import { appendGeminiSseToSession } from './geminiInteractionsSseTrace';
 import { databaseService } from './databaseService';
+
+const AGENT_ROLES = {
+  orchestrator: '@Orchestrator',
+  triager: '@Triager',
+  reviewer: '@ReviewerSwarm',
+  habitAnalyzer: '@HabitAnalyzer',
+} as const;
+
+/** ParsedFile has no triage risk field; approximate "high-risk" files via churn + sensitive path hints. */
+function isHighRiskFileForOrchestrator(f: ParsedFile): boolean {
+  const churn = f.additions + f.deletions;
+  if (churn >= 120) {
+    return true;
+  }
+  return /(?:secret|credential|password|token|auth|crypto|payment|sql|migrate|vault|\.env)/i.test(f.filename);
+}
 
 const ISSUE_CATEGORIES = [
   'security',
@@ -110,6 +129,87 @@ const ISSUES_JSON_SCHEMA = {
   },
   required: ['issues'],
 } as const;
+
+type GenaiTool = Interactions.Tool;
+type FunctionResultStep = Interactions.FunctionResultStep;
+
+const CODEPULSE_TOOLS: GenaiTool[] = [
+  {
+    type: 'function',
+    name: 'triage_files',
+    description:
+      'Rank the files in this pull request by review priority. Returns prioritized filenames and risk indicators. Call this FIRST to decide which files deserve deep review.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: 'Why you decided to triage now.' },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'lookup_developer_habits',
+    description:
+      'Query the developer history database for recurring issue patterns by this PR author. Use this when you want context on what mistakes this developer tends to repeat, so your review can focus on their weak spots.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: 'Why habit context will improve this review.' },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'analyze_chunk',
+    description:
+      'Perform deep semantic analysis on a specific chunk of the diff. Returns a list of structured findings (issues) with severity, line numbers, category, and suggested fixes. Call this for each chunk you want reviewed. You decide chunk-by-chunk what to focus on.',
+    parameters: {
+      type: 'object',
+      properties: {
+        chunk_index: { type: 'integer', description: 'Zero-based index of the chunk to analyze.' },
+        focus: {
+          type: 'string',
+          enum: ['security', 'logic', 'performance', 'style', 'general'],
+          description: 'What to focus on in this chunk based on what triage and habits told you.',
+        },
+      },
+      required: ['chunk_index', 'focus'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'escalate_critical_finding',
+    description:
+      'Escalate a CRITICAL-severity finding (credential leak, SQLi, auth bypass) to the team lead. This creates an escalation record and a simulated alert. Only call this for genuinely critical issues, not for medium/low findings.',
+    parameters: {
+      type: 'object',
+      properties: {
+        file: { type: 'string' },
+        line: { type: 'integer' },
+        category: { type: 'string' },
+        summary: { type: 'string', description: 'One-sentence description of the critical issue.' },
+        justification: { type: 'string', description: 'Why this rises to escalation level.' },
+      },
+      required: ['file', 'line', 'category', 'summary', 'justification'],
+    },
+  },
+  { type: 'google_search' },
+];
+
+const ORCHESTRATOR_SYSTEM_PROMPT = `You are the CodePulse Antigravity orchestrator agent. You run in the Google Antigravity environment (environment id: antigravity).
+
+You have tools: triage_files, lookup_developer_habits, analyze_chunk, escalate_critical_finding, and google_search (platform-executed search). You must decide which tools to call and in what order—TypeScript does not hardcode that sequence.
+
+Recommended flow:
+1) Call triage_files first unless the change set is trivially small (e.g. a single tiny file with very few lines); do not skip triage for substantial PRs.
+2) Optionally call lookup_developer_habits when workspace context exists and habits would sharpen the review.
+3) Call analyze_chunk for each diff chunk that deserves review (you choose indices and a focus area per chunk).
+4) Call escalate_critical_finding only for genuinely critical issues (credential leaks, severe auth/SQLi, etc.) as they are confirmed.
+5) You may rely on google_search for CVE or unfamiliar API verification when useful (the platform executes it; you will not see a local handler for it).
+
+When all tool work is finished, end your turn with a brief plain-text summary of what you did and the main outcomes. Do not dump the full diff in user-visible text; chunk content is only accessed via analyze_chunk.`;
 
 const SYSTEM_PROMPT = `You are an expert code reviewer with deep knowledge of TypeScript, JavaScript, Node.js, security vulnerabilities, and software engineering best practices.
 
@@ -397,8 +497,46 @@ function interactionOutputText(interaction: {
   return '';
 }
 
-function usageTokens(interaction: { usage?: Record<string, unknown> } | undefined): number {
-  const u = interaction?.usage;
+type AgentToolExecutionContext = {
+  parsedDiff: ParsedDiff;
+  workspaceCtx?: AnalyzeDiffWorkspaceContext;
+  session: AntigravityWorkspaceSession;
+  chunks: string[];
+  habitContextHolder: { value: string | null };
+  accumulatedIssues: DetectedIssue[];
+  escalations: EscalationRecord[];
+  reviewableFiles: ParsedFile[];
+  filesToReview: ParsedFile[];
+  tokensAccumulator: { value: number };
+};
+
+type PendingOrchestratorToolCall = {
+  call_id: string;
+  name: string;
+  args_buffer: string;
+};
+
+function rebuildChunksForFiles(ctx: AgentToolExecutionContext): void {
+  const lines = countReviewableLines(ctx.filesToReview);
+  const formatted = formatDiffForPrompt(ctx.parsedDiff, ctx.filesToReview);
+  ctx.chunks =
+    formatted.length > MAX_DIFF_CHUNK_CHAR_LIMIT
+      ? splitFormattedDiffIntoChunks(formatted, MAX_DIFF_CHUNK_CHAR_LIMIT)
+      : lines > 0 && formatted.length > 0
+        ? [formatted]
+        : [];
+}
+
+function countSeverityBuckets(issues: DetectedIssue[]): Record<string, number> {
+  const out: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const i of issues) {
+    out[i.severity] = (out[i.severity] ?? 0) + 1;
+  }
+  return out;
+}
+
+function usageTokens(interaction: { usage?: unknown } | undefined): number {
+  const u = interaction?.usage as Record<string, unknown> | undefined;
   if (!u) {
     return 0;
   }
@@ -436,13 +574,13 @@ Operational roles:
     prTitle: string;
     prDescription: string;
     files: TriageFileInput[];
-  }): Promise<string[]> {
+  }): Promise<{ filenames: string[]; triageInteractionId?: string }> {
     if (params.files.length === 0) {
-      return [];
+      return { filenames: [] };
     }
 
     if (params.files.length <= TRIAGE_MAX_FILES) {
-      return params.files.map((f) => f.filename);
+      return { filenames: params.files.map((f) => f.filename) };
     }
 
     const prompt = buildTriagePrompt(params);
@@ -453,7 +591,8 @@ Operational roles:
         input: prompt,
         system_instruction: `${this.personaSystemBlock()}\n\n${TRIAGE_SYSTEM_PROMPT}`,
         stream: false,
-        store: false,
+        store: true,
+        environment: ANTIGRAVITY_ENV,
         generation_config: {
           max_output_tokens: TRIAGE_MAX_COMPLETION_TOKENS,
           temperature: 0.2,
@@ -464,6 +603,8 @@ Operational roles:
           schema: TRIAGE_JSON_SCHEMA as unknown as Record<string, unknown>,
         },
       });
+
+      const triageInteractionId = interaction.id;
 
       const content = interactionOutputText(interaction);
       if (!content) {
@@ -486,31 +627,35 @@ Operational roles:
         totalFiles: params.files.length,
         selectedFiles: selected.length,
         prTitle: params.prTitle,
+        triageInteractionId,
       });
 
-      return selected;
+      return { filenames: selected, triageInteractionId };
     } catch (error) {
       logger.warn('Gemini triage failed, falling back to additions sort', {
         prTitle: params.prTitle,
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return fallbackTriageFilenames(params.files);
+      return { filenames: fallbackTriageFilenames(params.files) };
     }
   }
 
-  private async analyzeChunkStreaming(
-    formattedChunk: string,
+  private async analyzeChunkAsTool(
+    chunkText: string,
+    focus: string,
     parsedDiff: ParsedDiff,
     habitPromptSuffix: string,
-    session: AntigravityWorkspaceSession,
+    _session: AntigravityWorkspaceSession,
   ): Promise<{ issues: DetectedIssue[]; tokensUsed: number }> {
-    const stream = await this.ai.interactions.create({
+    const focusBlock = `\n\nReview focus for this chunk: ${focus}.\n`;
+    const interaction = await this.ai.interactions.create({
       model: GEMINI_ANTIGRAVITY_MODEL,
-      input: `Review this pull request diff. Tool name for reference: ${CODE_REVIEW_ISSUES_TOOL_NAME}.\n\n${formattedChunk}`,
-      system_instruction: `${this.personaSystemBlock()}\n\n${SYSTEM_PROMPT}${habitPromptSuffix}`,
-      stream: true,
-      store: false,
+      input: `Review this pull request diff. Tool name for reference: ${CODE_REVIEW_ISSUES_TOOL_NAME}.\n\n${chunkText}`,
+      system_instruction: `${this.personaSystemBlock()}\n\n${SYSTEM_PROMPT}${habitPromptSuffix}${focusBlock}`,
+      stream: false,
+      store: true,
+      environment: ANTIGRAVITY_ENV,
       generation_config: {
         max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
         temperature: 0.2,
@@ -523,35 +668,16 @@ Operational roles:
       },
     });
 
-    let completed: { usage?: Record<string, unknown>; output_text?: string; steps?: unknown[] } | null = null;
-    let streamedText = '';
-
-    for await (const event of stream) {
-      await appendGeminiSseToSession(session, event);
-      const e = event as {
-        event_type?: string;
-        interaction?: typeof completed;
-        delta?: { type?: string; text?: string };
-      };
-      if (e.event_type === 'step.delta' && e.delta?.type === 'text' && e.delta.text) {
-        streamedText += e.delta.text;
-      }
-      if (e.event_type === 'interaction.completed' && e.interaction) {
-        completed = e.interaction;
-      }
-    }
-
-    const fromInteraction = completed ? interactionOutputText(completed) : '';
-    const text = fromInteraction || streamedText.trim();
+    const text = interactionOutputText(interaction);
     if (!text) {
-      throw new Error('Gemini streaming interaction completed without JSON text');
+      throw new Error('Gemini chunk interaction had no JSON text');
     }
 
     let parsedResponse: unknown;
     try {
       parsedResponse = JSON.parse(text);
     } catch {
-      logger.error('Failed to parse Gemini JSON output', {
+      logger.error('Failed to parse Gemini JSON output (chunk tool)', {
         preview: text.slice(0, 400),
         repo: parsedDiff.repo,
         prNumber: parsedDiff.prNumber,
@@ -561,7 +687,7 @@ Operational roles:
 
     const validated = toolResponseSchema.safeParse(parsedResponse);
     if (!validated.success) {
-      logger.error('Gemini JSON failed validation', {
+      logger.error('Gemini JSON failed validation (chunk tool)', {
         issues: validated.error.issues,
         repo: parsedDiff.repo,
         prNumber: parsedDiff.prNumber,
@@ -575,8 +701,173 @@ Operational roles:
 
     return {
       issues,
-      tokensUsed: usageTokens(completed ?? undefined),
+      tokensUsed: usageTokens(interaction as { usage?: unknown }),
     };
+  }
+
+  private async analyzeChunkStreaming(
+    formattedChunk: string,
+    parsedDiff: ParsedDiff,
+    habitPromptSuffix: string,
+    _session: AntigravityWorkspaceSession,
+    _previousInteractionId?: string,
+  ): Promise<{ issues: DetectedIssue[]; tokensUsed: number; interactionId?: string }> {
+    const { issues, tokensUsed } = await this.analyzeChunkAsTool(
+      formattedChunk,
+      'general',
+      parsedDiff,
+      habitPromptSuffix,
+      _session,
+    );
+    return { issues, tokensUsed, interactionId: undefined };
+  }
+
+  private async executeTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    ctx: AgentToolExecutionContext,
+  ): Promise<unknown> {
+    await ctx.session.thought(
+      AGENT_ROLES.orchestrator,
+      `Tool dispatch: ${toolName}`,
+      withAntigravityMeta({ tool: toolName, args }),
+    );
+
+    switch (toolName) {
+      case 'triage_files': {
+        const outcome = await this.triageFiles({
+          prTitle: ctx.parsedDiff.prTitle,
+          prDescription: ctx.parsedDiff.prDescription,
+          files: ctx.reviewableFiles.map((f) => ({
+            filename: f.filename,
+            additions: f.additions,
+            deletions: f.deletions,
+            status: f.status,
+          })),
+        });
+        ctx.filesToReview = selectFilesForReview(ctx.reviewableFiles, outcome.filenames);
+        rebuildChunksForFiles(ctx);
+        const highRiskCount = ctx.filesToReview.filter((f) => {
+          const ext = f as ParsedFile & { risk?: string; riskLevel?: string; priority?: string };
+          const label = String(ext.risk ?? ext.riskLevel ?? ext.priority ?? '').toLowerCase();
+          return label === 'high' || label === 'critical' || isHighRiskFileForOrchestrator(f);
+        }).length;
+        await ctx.session.step(
+          AGENT_ROLES.orchestrator,
+          `triage_files completed: ${outcome.filenames.length} filename(s), ${ctx.chunks.length} chunk(s) after format.`,
+          withAntigravityMeta({
+            tool: 'triage_files',
+            filenames: outcome.filenames.slice(0, 40),
+            highRiskCount,
+            chunkCount: ctx.chunks.length,
+          }),
+        );
+        return { filenames: outcome.filenames, highRiskCount };
+      }
+      case 'lookup_developer_habits': {
+        if (!ctx.workspaceCtx) {
+          await ctx.session.step(
+            AGENT_ROLES.orchestrator,
+            'lookup_developer_habits skipped: no workspace context.',
+            withAntigravityMeta({ tool: 'lookup_developer_habits' }),
+          );
+          return { found: false, categories: [] as string[], summary: 'No workspace context for habit lookup.' };
+        }
+        const pastRows = await databaseService.findRecentIssuesForDeveloperHabitContext({
+          developerId: ctx.workspaceCtx.developerId,
+          organizationId: ctx.workspaceCtx.organizationId,
+          excludePullRequestId: ctx.workspaceCtx.pullRequestId,
+          limit: HABIT_CONTEXT_ISSUE_LIMIT,
+        });
+        const suffix = buildHabitPromptSuffix(pastRows);
+        ctx.habitContextHolder.value = suffix.length > 0 ? suffix : null;
+        const categories = [...new Set(pastRows.map((r) => r.category))];
+        const summary =
+          pastRows.length === 0
+            ? 'No prior merged issues for this author in this org.'
+            : `${pastRows.length} prior issue row(s); top categories: ${categories.slice(0, 8).join(', ')}.`;
+        await ctx.session.step(
+          AGENT_ROLES.orchestrator,
+          `lookup_developer_habits: ${pastRows.length} row(s).`,
+          withAntigravityMeta({ tool: 'lookup_developer_habits', rowCount: pastRows.length }),
+        );
+        return { found: pastRows.length > 0, categories, summary };
+      }
+      case 'analyze_chunk': {
+        const chunkIndex = typeof args.chunk_index === 'number' ? args.chunk_index : Number(args.chunk_index);
+        const focus = typeof args.focus === 'string' ? args.focus : 'general';
+        if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= ctx.chunks.length) {
+          throw new Error(`Invalid chunk_index ${String(args.chunk_index)} (have ${ctx.chunks.length} chunks)`);
+        }
+        const chunkText = ctx.chunks[chunkIndex];
+        const habitSuffix = ctx.habitContextHolder.value ?? '';
+        const { issues, tokensUsed } = await this.analyzeChunkAsTool(
+          chunkText,
+          focus,
+          ctx.parsedDiff,
+          habitSuffix,
+          ctx.session,
+        );
+        ctx.tokensAccumulator.value += tokensUsed;
+        ctx.accumulatedIssues.push(...issues);
+        const bucket = countSeverityBuckets(issues);
+        await ctx.session.step(
+          AGENT_ROLES.orchestrator,
+          `analyze_chunk[${chunkIndex}] focus=${focus}: ${issues.length} issue(s).`,
+          withAntigravityMeta({ tool: 'analyze_chunk', chunkIndex, focus, issues_found: issues.length }),
+        );
+        return { issues_found: issues.length, severities: bucket };
+      }
+      case 'escalate_critical_finding': {
+        const file = String(args.file ?? '');
+        const line = typeof args.line === 'number' ? args.line : Number(args.line);
+        const category = String(args.category ?? '');
+        const summary = String(args.summary ?? '');
+        const justification = String(args.justification ?? '');
+        if (!file || !Number.isInteger(line) || line <= 0) {
+          throw new Error('escalate_critical_finding requires valid file and line');
+        }
+        const id = `esc_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const rec: EscalationRecord = {
+          id,
+          file,
+          line,
+          category,
+          summary,
+          justification,
+          created_at: new Date().toISOString(),
+          status: 'pending',
+        };
+        ctx.escalations.push(rec);
+        rec.status = 'notified';
+        await ctx.session.step(
+          AGENT_ROLES.orchestrator,
+          `Escalation recorded: ${summary}`,
+          withAntigravityMeta({
+            kind: 'escalation',
+            escalation_id: id,
+            file,
+            line,
+            category,
+          }),
+        );
+        return { escalated: true, escalation_id: id };
+      }
+      case 'google_search': {
+        logger.error('executeTool received google_search — unexpected; platform should handle server-side', {
+          repo: ctx.parsedDiff.repo,
+          prNumber: ctx.parsedDiff.prNumber,
+        });
+        await ctx.session.step(
+          AGENT_ROLES.orchestrator,
+          'google_search routed to local executeTool (unexpected).',
+          withAntigravityMeta({ tool: 'google_search', error: true }),
+        );
+        return { error: 'google_search is executed by the platform, not CodePulse executeTool.' };
+      }
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
   }
 
   async analyzeDiff(
@@ -587,25 +878,14 @@ Operational roles:
     await session.open();
 
     try {
-      await session.transition(
-        'workspace',
-        '@Triager',
-        'Antigravity workspace delegating to @Triager (Gemini Interactions API, gemini-3.5-flash).',
-        { repo: parsedDiff.repo, prNumber: parsedDiff.prNumber, model: GEMINI_ANTIGRAVITY_MODEL },
-      );
+      void this.analyzeChunkStreaming;
 
       const reviewableFiles = getReviewableFiles(parsedDiff);
-      await session.thought(
-        '@Triager',
-        `Applied getReviewableFiles: ${reviewableFiles.length} reviewable file(s) from ${parsedDiff.files.length} changed.`,
-        { reviewableCount: reviewableFiles.length, totalFiles: parsedDiff.files.length },
-      );
-
       if (reviewableFiles.length === 0) {
         await session.step(
           '@Triager',
-          'No reviewable lines in diff; skipping Gemini triage and downstream agents.',
-          {},
+          'No reviewable lines in diff; skipping agent loop.',
+          withAntigravityMeta({}),
         );
         const empty = buildEmptyResult(parsedDiff);
         await session.close('Workspace session complete (no reviewable diff).', {
@@ -618,93 +898,24 @@ Operational roles:
         return empty;
       }
 
-      const prioritizedFilenames = await this.triageFiles({
-        prTitle: parsedDiff.prTitle,
-        prDescription: parsedDiff.prDescription,
-        files: reviewableFiles.map((f) => ({
-          filename: f.filename,
-          additions: f.additions,
-          deletions: f.deletions,
-          status: f.status,
-        })),
-      });
-
-      await session.step(
-        '@Triager',
-        `Triage loop complete: ${prioritizedFilenames.length} filename(s) prioritized for deep review (cap ${TRIAGE_MAX_FILES}).`,
-        { prioritizedFilenames: prioritizedFilenames.slice(0, 40) },
-      );
-
-      const filesToReview = selectFilesForReview(reviewableFiles, prioritizedFilenames);
-      const reviewableLines = countReviewableLines(filesToReview);
+      const filesToReview = [...reviewableFiles];
       const formattedDiff = formatDiffForPrompt(parsedDiff, filesToReview);
-
-      await session.thought(
-        '@Triager',
-        `diffFormatter selected ${filesToReview.length} file(s), ${reviewableLines} reviewable line(s), formatted diff ${formattedDiff.length} chars.`,
-        {
-          filesToReview: filesToReview.length,
-          reviewableLines,
-          formattedLength: formattedDiff.length,
-        },
-      );
-
+      const reviewableLines = countReviewableLines(filesToReview);
       if (reviewableLines === 0 || formattedDiff.length === 0) {
         await session.step(
           '@Triager',
-          'Prioritized set has no reviewable lines or empty formatted diff; stopping before habit and reviewer swarm.',
-          { reviewableLines, formattedLength: formattedDiff.length },
+          'No reviewable lines in formatted diff; skipping agent loop.',
+          withAntigravityMeta({ reviewableLines, formattedLength: formattedDiff.length }),
         );
         const empty = buildEmptyResult(parsedDiff);
-        await session.close('Workspace session complete (empty prioritized diff).', {
+        await session.close('Workspace session complete (empty formatted diff).', {
           outcome: 'empty_prioritized',
         });
-        logger.info('No reviewable lines in prioritized files, skipping analysis', {
+        logger.info('No reviewable lines in formatted diff, skipping analysis', {
           repo: parsedDiff.repo,
           prNumber: parsedDiff.prNumber,
-          reviewableLines,
         });
         return empty;
-      }
-
-      await session.transition(
-        '@Triager',
-        '@HabitAnalyzer',
-        'Handoff to @HabitAnalyzer for developer habit context via database lookup.',
-        {},
-      );
-
-      let habitPromptSuffix = '';
-      if (workspaceCtx) {
-        const pastRows = await databaseService.findRecentIssuesForDeveloperHabitContext({
-          developerId: workspaceCtx.developerId,
-          organizationId: workspaceCtx.organizationId,
-          excludePullRequestId: workspaceCtx.pullRequestId,
-          limit: HABIT_CONTEXT_ISSUE_LIMIT,
-        });
-        await session.tool(
-          '@HabitAnalyzer',
-          'databaseService.findRecentIssuesForDeveloperHabitContext',
-          {
-            rowCount: pastRows.length,
-            developerId: workspaceCtx.developerId,
-            organizationId: workspaceCtx.organizationId,
-          },
-        );
-        habitPromptSuffix = buildHabitPromptSuffix(pastRows);
-        await session.thought(
-          '@HabitAnalyzer',
-          pastRows.length > 0
-            ? `Loaded ${pastRows.length} prior issue row(s); habit block length ${habitPromptSuffix.length} chars.`
-            : 'No prior issues for this developer in this org (excluding current PR).',
-          { habitBlockChars: habitPromptSuffix.length },
-        );
-      } else {
-        await session.step(
-          '@HabitAnalyzer',
-          'No AnalyzeDiffWorkspaceContext; skipping Prisma habit lookup (trace persistence also disabled).',
-          {},
-        );
       }
 
       const chunks =
@@ -712,103 +923,246 @@ Operational roles:
           ? splitFormattedDiffIntoChunks(formattedDiff, MAX_DIFF_CHUNK_CHAR_LIMIT)
           : [formattedDiff];
 
+      const ctx: AgentToolExecutionContext = {
+        parsedDiff,
+        workspaceCtx,
+        session,
+        chunks,
+        habitContextHolder: { value: null },
+        accumulatedIssues: [],
+        escalations: [],
+        reviewableFiles,
+        filesToReview,
+        tokensAccumulator: { value: 0 },
+      };
+
       await session.transition(
-        '@HabitAnalyzer',
-        '@ReviewerSwarm',
-        `Handoff to @ReviewerSwarm for Gemini Interactions streaming review (${GEMINI_ANTIGRAVITY_MODEL}).`,
-        { chunkCount: chunks.length, model: GEMINI_ANTIGRAVITY_MODEL },
+        'workspace',
+        AGENT_ROLES.orchestrator,
+        `Starting agent-driven review loop with ${chunks.length} chunk(s) available (reviewable files: ${reviewableFiles.length}).`,
+        withAntigravityMeta({
+          chunkCount: chunks.length,
+          reviewableFiles: reviewableFiles.length,
+          model: GEMINI_ANTIGRAVITY_MODEL,
+        }),
       );
 
-      logger.info('Antigravity reviewer swarm started (Gemini)', {
-        totalFiles: parsedDiff.files.length,
-        prioritizedFiles: prioritizedFilenames.length,
-        chunks: chunks.length,
-        repo: parsedDiff.repo,
-        prNumber: parsedDiff.prNumber,
+      const orchestratorUserMessage = [
+        `Repository: ${parsedDiff.repo}`,
+        `PR #${parsedDiff.prNumber}`,
+        `Title: ${parsedDiff.prTitle}`,
+        `Description (abridged): ${parsedDiff.prDescription.slice(0, 2000)}`,
+        `Total files in raw diff: ${parsedDiff.files.length}`,
+        `Reviewable files (non-empty hunks): ${reviewableFiles.length}`,
+        `Total additions/deletions (PR metadata): ${parsedDiff.totalAdditions}/${parsedDiff.totalDeletions}`,
+        `Chunks available for tool analyze_chunk — use zero-based chunk_index in 0..${chunks.length - 1} (full diff is not inlined here).`,
+        `Changed paths (filenames only, max 80):`,
+        ...parsedDiff.files.slice(0, 80).map((f) => `- ${f.filename} (+${f.additions}/-${f.deletions})`),
+      ].join('\n');
+
+      const systemInstruction = `${this.personaSystemBlock()}\n\n${ORCHESTRATOR_SYSTEM_PROMPT}`;
+
+      const MAX_AGENT_TURNS = 20;
+      let safetyCounter = 0;
+      let previousInteractionId: string | undefined;
+      let stream = await this.ai.interactions.create({
+        model: GEMINI_ANTIGRAVITY_MODEL,
+        environment: ANTIGRAVITY_ENV,
+        store: true,
+        stream: true,
+        system_instruction: systemInstruction,
+        input: orchestratorUserMessage,
+        tools: CODEPULSE_TOOLS,
+        generation_config: {
+          temperature: 0.2,
+          thinking_summaries: 'auto',
+        },
       });
 
-      const allIssues: DetectedIssue[] = [];
-      let tokensUsed = 0;
+      while (safetyCounter < MAX_AGENT_TURNS) {
+        safetyCounter += 1;
+        const pendingToolCalls: PendingOrchestratorToolCall[] = [];
+        let lastInteractionId: string | undefined;
+        let finalStatus: string | undefined;
 
-      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-        try {
-          await session.thought(
-            '@ReviewerSwarm',
-            `Gemini Interactions stream: chunk ${chunkIndex + 1}/${chunks.length} (chars=${chunks[chunkIndex].length}).`,
-            { chunkIndex, totalChunks: chunks.length },
-          );
+        for await (const event of stream) {
+          if (process.env.ANTIGRAVITY_DEBUG === '1') {
+            console.log('[ANTIGRAVITY_SSE_DEBUG]', JSON.stringify(event, null, 2));
+          }
+          await appendGeminiSseToSession(session, event);
+          const ev = event as unknown as Record<string, unknown>;
+          const et = ev.event_type as string | undefined;
 
-          const { issues, tokensUsed: chunkTokens } = await this.analyzeChunkStreaming(
-            chunks[chunkIndex],
-            parsedDiff,
-            habitPromptSuffix,
-            session,
-          );
-          tokensUsed += chunkTokens;
-          allIssues.push(...issues);
+          if (et === 'step.start' && ev.step && typeof ev.step === 'object') {
+            const step = ev.step as Record<string, unknown>;
+            if (step.type === 'function_call') {
+              const id = String(step.id ?? '');
+              const name = String(step.name ?? '');
+              let initialArgs = '{}';
+              if (step.arguments !== undefined && step.arguments !== null) {
+                initialArgs =
+                  typeof step.arguments === 'string'
+                    ? step.arguments
+                    : JSON.stringify(step.arguments);
+              }
+              pendingToolCalls.push({ call_id: id, name, args_buffer: initialArgs });
+              await session.step(
+                AGENT_ROLES.orchestrator,
+                `Agent requested tool: ${name}`,
+                withAntigravityMeta({ kind: 'tool_call_requested', tool: name, call_id: id }),
+              );
+            }
+          }
 
-          await session.step(
-            '@ReviewerSwarm',
-            `Chunk ${chunkIndex + 1}/${chunks.length} returned ${issues.length} issue(s); tokens +${chunkTokens}.`,
-            { chunkIndex, issuesInChunk: issues.length, chunkTokens },
-          );
+          if (et === 'step.delta' && ev.delta && typeof ev.delta === 'object') {
+            const delta = ev.delta as Record<string, unknown>;
+            if (delta.type === 'arguments_delta' && typeof delta.arguments === 'string') {
+              const pending = pendingToolCalls[pendingToolCalls.length - 1];
+              if (pending) {
+                pending.args_buffer += delta.arguments;
+              }
+            }
+          }
 
-          logger.info('Chunk analysis (Gemini)', {
-            chunkIndex,
-            totalChunks: chunks.length,
-            issuesInChunk: issues.length,
-            repo: parsedDiff.repo,
-            prNumber: parsedDiff.prNumber,
-          });
-        } catch (chunkError) {
-          await session.step(
-            '@ReviewerSwarm',
-            `Chunk ${chunkIndex + 1} failed: ${chunkError instanceof Error ? chunkError.message : String(chunkError)}`,
-            { chunkIndex, totalChunks: chunks.length },
-          );
-          logger.error('Chunk analysis failed (Gemini)', {
-            chunkIndex,
-            totalChunks: chunks.length,
-            repo: parsedDiff.repo,
-            prNumber: parsedDiff.prNumber,
-            error: chunkError instanceof Error ? chunkError.message : String(chunkError),
+          if (
+            (et === 'interaction.created' || et === 'interaction.completed') &&
+            ev.interaction &&
+            typeof ev.interaction === 'object'
+          ) {
+            const inter = ev.interaction as Record<string, unknown>;
+            if (typeof inter.id === 'string') {
+              lastInteractionId = inter.id;
+            }
+            if (typeof inter.status === 'string') {
+              finalStatus = inter.status;
+            }
+            if (inter.usage && typeof inter.usage === 'object') {
+              ctx.tokensAccumulator.value += usageTokens({
+                usage: inter.usage as Record<string, unknown>,
+              });
+            }
+          }
+
+          if (et === 'interaction.status_update') {
+            if (typeof ev.status === 'string') {
+              finalStatus = ev.status;
+            }
+            if (typeof ev.interaction_id === 'string') {
+              lastInteractionId = ev.interaction_id;
+            }
+          }
+        }
+
+        if (lastInteractionId) {
+          previousInteractionId = lastInteractionId;
+        }
+
+        if (pendingToolCalls.length === 0 && finalStatus === 'completed') {
+          break;
+        }
+
+        if (pendingToolCalls.length === 0) {
+          if (finalStatus === 'requires_action') {
+            await session.thought(
+              AGENT_ROLES.orchestrator,
+              'Interaction requires_action but no tool calls were parsed from the stream; stopping.',
+              withAntigravityMeta({ kind: 'error', finalStatus }),
+            );
+          }
+          break;
+        }
+
+        const toolResults: FunctionResultStep[] = [];
+        while (pendingToolCalls.length > 0) {
+          const call = pendingToolCalls.shift()!;
+          let parsedArgs: Record<string, unknown> = {};
+          try {
+            parsedArgs = JSON.parse(call.args_buffer || '{}') as Record<string, unknown>;
+          } catch {
+            parsedArgs = {};
+          }
+          let result: unknown;
+          let isError = false;
+          try {
+            result = await this.executeTool(call.name, parsedArgs, ctx);
+          } catch (err) {
+            result = { error: err instanceof Error ? err.message : String(err) };
+            isError = true;
+          }
+          toolResults.push({
+            type: 'function_result',
+            call_id: call.call_id,
+            name: call.name,
+            result,
+            is_error: isError,
           });
         }
+
+        if (!previousInteractionId) {
+          await session.thought(
+            AGENT_ROLES.orchestrator,
+            'Lost interaction id; cannot continue agent loop.',
+            withAntigravityMeta({ kind: 'error' }),
+          );
+          break;
+        }
+
+        stream = await this.ai.interactions.create({
+          model: GEMINI_ANTIGRAVITY_MODEL,
+          environment: ANTIGRAVITY_ENV,
+          store: true,
+          stream: true,
+          previous_interaction_id: previousInteractionId,
+          input: toolResults,
+          tools: CODEPULSE_TOOLS,
+          generation_config: {
+            temperature: 0.2,
+            thinking_summaries: 'auto',
+          },
+        });
       }
 
-      await session.transition(
-        '@ReviewerSwarm',
-        '@Orchestrator',
-        'Handoff to @Orchestrator for dedupe, severity ordering, CRITICAL / credential-leak policy, and cap.',
-        { rawIssueCount: allIssues.length },
+      if (safetyCounter >= MAX_AGENT_TURNS) {
+        await session.thought(
+          AGENT_ROLES.orchestrator,
+          `Agent loop exceeded MAX_AGENT_TURNS (${MAX_AGENT_TURNS}); finalizing with accumulated issues.`,
+          withAntigravityMeta({ kind: 'safety_stop' }),
+        );
+      }
+
+      await session.step(
+        AGENT_ROLES.orchestrator,
+        'Applying merge policy: dedupe, credential-pattern scan, severity ordering, and cap.',
+        withAntigravityMeta({ rawIssueCount: ctx.accumulatedIssues.length }),
       );
 
+      const allIssues = ctx.accumulatedIssues;
       const deduped = dedupeIssues(allIssues);
       const afterCredentialPass = orchestratorEscalateCredentialLeaks(deduped);
       const criticalIssues = afterCredentialPass.filter((i) => i.severity === 'critical');
       const cappedIssues = sortBySeverity(afterCredentialPass).slice(0, MAX_ISSUES_PER_PR);
 
       await session.thought(
-        '@Orchestrator',
+        AGENT_ROLES.orchestrator,
         `Merged pipeline: raw=${allIssues.length}, after dedupe=${deduped.length}, after credential scan=${afterCredentialPass.length}, CRITICAL count=${criticalIssues.length}, after cap=${cappedIssues.length}.`,
-        {
+        withAntigravityMeta({
           raw: allIssues.length,
           deduped: deduped.length,
           postCredential: afterCredentialPass.length,
           criticalCount: criticalIssues.length,
           capped: cappedIssues.length,
-        },
+        }),
       );
 
       await session.step(
-        '@Orchestrator',
+        AGENT_ROLES.orchestrator,
         criticalIssues.length > 0
           ? `CRITICAL scan: ${criticalIssues.length} issue(s) at critical severity (includes credential-pattern escalations). Resend escalation will run for enabled repos.`
           : 'CRITICAL scan: no critical-severity issues after merge and credential-pattern pass.',
-        {
+        withAntigravityMeta({
           criticalCount: criticalIssues.length,
           criticalTitles: criticalIssues.slice(0, 12).map((i) => i.title),
-        },
+        }),
       );
 
       logger.info('Final merged results (Gemini)', {
@@ -822,9 +1176,9 @@ Operational roles:
         repo: parsedDiff.repo,
         prNumber: parsedDiff.prNumber,
         issueCount: cappedIssues.length,
-        tokensUsed,
+        tokensUsed: ctx.tokensAccumulator.value,
         model: GEMINI_ANTIGRAVITY_MODEL,
-        chunksAnalyzed: chunks.length,
+        chunksAnalyzed: ctx.chunks.length,
       });
 
       const result: AnalysisResult = {
@@ -832,10 +1186,11 @@ Operational roles:
         repo: parsedDiff.repo,
         headSha: parsedDiff.headSha,
         issues: cappedIssues,
-        filesAnalyzed: filesToReview.length,
+        filesAnalyzed: ctx.filesToReview.length,
         analyzedAt: new Date().toISOString(),
         modelUsed: GEMINI_ANTIGRAVITY_MODEL,
-        tokensUsed,
+        tokensUsed: ctx.tokensAccumulator.value,
+        escalations: ctx.escalations.length > 0 ? ctx.escalations : undefined,
       };
 
       await session.close('Antigravity workspace session complete (Gemini Interactions).', {

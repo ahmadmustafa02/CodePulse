@@ -1,6 +1,7 @@
 /** Maps Gemini Interactions API SSE events into persisted Antigravity-style AgentTrace rows. */
 
 import type { AntigravityAgent } from '../types/agentWorkspace';
+import { withAntigravityMeta } from '../utils/antigravityMeta';
 import { AntigravityWorkspaceSession } from './antigravityWorkspaceSession';
 
 type SseEvent = {
@@ -54,7 +55,7 @@ export async function appendGeminiSseToSession(
     await session.step(
       '@Orchestrator',
       `Gemini Interactions: session created (interaction_id=${ev.interaction?.id ?? 'unknown'}).`,
-      { source: 'gemini_interactions_sse', status: ev.interaction?.status },
+      withAntigravityMeta({ source: 'gemini_interactions_sse', status: ev.interaction?.status }),
     );
     return;
   }
@@ -63,7 +64,7 @@ export async function appendGeminiSseToSession(
     await session.step(
       '@Orchestrator',
       `Gemini Interactions: status → ${ev.status ?? 'unknown'}`,
-      { source: 'gemini_interactions_sse', interaction_id: ev.interaction_id },
+      withAntigravityMeta({ source: 'gemini_interactions_sse', interaction_id: ev.interaction_id }),
     );
     return;
   }
@@ -72,7 +73,7 @@ export async function appendGeminiSseToSession(
     await session.step(
       '@Orchestrator',
       `Gemini Interactions SSE error: ${ev.error?.message ?? JSON.stringify(ev.error)}`,
-      { source: 'gemini_interactions_sse', code: ev.error?.code },
+      withAntigravityMeta({ source: 'gemini_interactions_sse', code: ev.error?.code }),
     );
     return;
   }
@@ -80,10 +81,10 @@ export async function appendGeminiSseToSession(
   if (et === 'step.start') {
     const st = ev.step?.type;
     const agent = inferAgentFromStepType(st);
-    await session.step(agent, `Gemini step.start: ${st ?? 'unknown'}`, {
+    await session.step(agent, `Gemini step.start: ${st ?? 'unknown'}`, withAntigravityMeta({
       source: 'gemini_interactions_sse',
       index: ev.index,
-    });
+    }));
     return;
   }
 
@@ -101,7 +102,11 @@ export async function appendGeminiSseToSession(
           ? String((d.content as { text?: string }).text ?? '')
           : '';
       if (t) {
-        await session.thought('@ReviewerSwarm', t, { source: 'gemini_interactions_sse', delta: 'thought_summary' });
+        await session.thought(
+          '@ReviewerSwarm',
+          t,
+          withAntigravityMeta({ source: 'gemini_interactions_sse', delta: 'thought_summary' }),
+        );
       }
       return;
     }
@@ -123,15 +128,17 @@ export async function appendGeminiSseToSession(
     await session.thought(
       '@ReviewerSwarm',
       `step.delta: ${d.type}`,
-      { source: 'gemini_interactions_sse', index: ev.index },
+      withAntigravityMeta({ source: 'gemini_interactions_sse', index: ev.index }),
     );
     return;
   }
 
   if (et === 'step.stop') {
-    await session.step('@ReviewerSwarm', `step.stop index=${ev.index ?? '?'}`, {
-      source: 'gemini_interactions_sse',
-    });
+    await session.step(
+      '@ReviewerSwarm',
+      `step.stop index=${ev.index ?? '?'}`,
+      withAntigravityMeta({ source: 'gemini_interactions_sse' }),
+    );
     return;
   }
 
@@ -142,7 +149,7 @@ export async function appendGeminiSseToSession(
     await session.step(
       '@Orchestrator',
       `Gemini Interactions: interaction.completed${tokens != null ? ` (tokens≈${tokens})` : ''}.`,
-      { source: 'gemini_interactions_sse', status: ev.interaction?.status },
+      withAntigravityMeta({ source: 'gemini_interactions_sse', status: ev.interaction?.status }),
     );
   }
 }

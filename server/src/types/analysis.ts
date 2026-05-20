@@ -23,6 +23,17 @@ export type DetectedIssue = {
   codeSnippet: string;
 };
 
+export type EscalationRecord = {
+  id: string;
+  file: string;
+  line: number;
+  category: string;
+  summary: string;
+  justification: string;
+  created_at: string;
+  status: 'pending' | 'notified';
+};
+
 export type AnalysisResult = {
   prNumber: number;
   repo: string;
@@ -32,4 +43,5 @@ export type AnalysisResult = {
   analyzedAt: string;
   modelUsed: string;
   tokensUsed: number;
+  escalations?: EscalationRecord[];
 };
