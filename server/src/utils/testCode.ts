@@ -1,4 +1,4 @@
-// intentionally bad code for testing Groq analysis
+// intentionally bad code for testing AI analysis
 import { db } from './db'
 
 export async function getUser(id: any) {

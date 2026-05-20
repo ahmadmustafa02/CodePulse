@@ -1,13 +1,21 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Github, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/codepulse/app-shell";
 import { InstallAppBanner } from "@/components/codepulse/install-app-banner";
 import { Panel, PanelHeader } from "@/components/codepulse/panel";
 import { ListSkeleton } from "@/components/codepulse/skeletons";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { api } from "@/lib/api";
+import {
+  api,
+  getRepositoryEscalationSettings,
+  updateRepositoryEscalationSettings,
+} from "@/lib/api";
 import { fetchSession, hasInstallation, signOut } from "@/lib/auth";
 import { GITHUB_APP_INSTALL_URL, githubInstallationSettingsUrl } from "@/lib/constants";
 import { ensureLoggedIn } from "@/lib/route-guard";
@@ -47,6 +55,45 @@ function SettingsPage() {
   const [rules, setRules] = useState(defaultRules);
   const [cadence, setCadence] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [disconnecting, setDisconnecting] = useState(false);
+  const [escalationRepoId, setEscalationRepoId] = useState<string | null>(null);
+  const [teamLeadEmail, setTeamLeadEmail] = useState("");
+  const [escalationEnabled, setEscalationEnabled] = useState(false);
+
+  useEffect(() => {
+    if (repos.data?.length && escalationRepoId === null) {
+      setEscalationRepoId(repos.data[0].id);
+    }
+  }, [repos.data, escalationRepoId]);
+
+  const escalationQ = useQuery({
+    queryKey: ["repository-escalation", escalationRepoId],
+    queryFn: () => getRepositoryEscalationSettings(escalationRepoId!),
+    enabled: Boolean(installed && escalationRepoId),
+  });
+
+  useEffect(() => {
+    if (escalationQ.data) {
+      setTeamLeadEmail(escalationQ.data.teamLeadEmail ?? "");
+      setEscalationEnabled(escalationQ.data.escalationEnabled);
+    }
+  }, [escalationQ.data]);
+
+  const saveEscalation = useMutation({
+    mutationFn: async () => {
+      if (!escalationRepoId) throw new Error("No repository selected");
+      return updateRepositoryEscalationSettings(escalationRepoId, {
+        teamLeadEmail: teamLeadEmail.trim() === "" ? null : teamLeadEmail.trim(),
+        escalationEnabled,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["repository-escalation", escalationRepoId] });
+      toast.success("Critical escalation settings saved.");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Could not save settings.");
+    },
+  });
 
   async function handleDisconnect() {
     setDisconnecting(true);
@@ -138,6 +185,83 @@ function SettingsPage() {
               </ul>
             </Panel>
           )}
+
+          {installed && repos.data && repos.data.length > 0 ? (
+            <Panel className="ring-1 ring-orange-500/15">
+              <PanelHeader
+                title="🔒 Critical Security Escalation Settings"
+                hint="Antigravity team alerts — Resend delivery."
+              />
+              <div className="space-y-5">
+                {repos.data.length > 1 ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="escalation-repo" className="text-xs text-zinc-400">
+                      Repository
+                    </Label>
+                    <select
+                      id="escalation-repo"
+                      value={escalationRepoId ?? ""}
+                      onChange={(e) => setEscalationRepoId(e.target.value || null)}
+                      className="w-full max-w-md cursor-pointer rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-orange-500/50 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                    >
+                      {repos.data.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.owner}/{r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  <Label htmlFor="team-lead-email" className="text-xs text-orange-400/90">
+                    Team lead email address
+                  </Label>
+                  <Input
+                    id="team-lead-email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="lead@company.com"
+                    value={teamLeadEmail}
+                    onChange={(e) => setTeamLeadEmail(e.target.value)}
+                    disabled={escalationQ.isLoading || saveEscalation.isPending}
+                    className="max-w-md border-zinc-800 bg-zinc-950 text-zinc-100 placeholder:text-zinc-600 focus-visible:border-orange-500/50 focus-visible:ring-orange-500/25"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
+                  <span className="text-sm font-medium text-zinc-100">
+                    Enable immediate critical escalation alerts via Resend
+                  </span>
+                  <Switch
+                    checked={escalationEnabled}
+                    onCheckedChange={setEscalationEnabled}
+                    disabled={escalationQ.isLoading || saveEscalation.isPending}
+                    className="shrink-0 data-[state=checked]:bg-orange-500"
+                  />
+                </div>
+
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  When enabled, critical security vulnerabilities (e.g., exposed credentials) detected during PR triage
+                  will bypass the Sunday queue and instantly alert the engineering lead.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={() => void saveEscalation.mutateAsync()}
+                    disabled={!escalationRepoId || escalationQ.isLoading || saveEscalation.isPending}
+                    className="bg-orange-500 text-zinc-950 hover:bg-orange-400"
+                  >
+                    {saveEscalation.isPending ? "Saving…" : "Save escalation settings"}
+                  </Button>
+                  {escalationQ.isError ? (
+                    <span className="text-xs text-red-400">Could not load current settings.</span>
+                  ) : null}
+                </div>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel>
             <PanelHeader title="Review rules" hint="Toggle which patterns CodePulse reports." />

@@ -47,8 +47,9 @@ export class GitHubAuthService {
     const octokit = new Octokit({ auth: token });
     const all: GitHubAccessibleRepository[] = [];
     let page = 1;
+    let hasMore = true;
 
-    while (true) {
+    while (hasMore) {
       const { data } = await octokit.rest.apps.listReposAccessibleToInstallation({
         per_page: 100,
         page,
@@ -63,8 +64,11 @@ export class GitHubAuthService {
         });
       }
 
-      if (data.repositories.length < 100) break;
-      page += 1;
+      if (data.repositories.length < 100) {
+        hasMore = false;
+      } else {
+        page += 1;
+      }
     }
 
     logger.info('Listed repositories for installation', {

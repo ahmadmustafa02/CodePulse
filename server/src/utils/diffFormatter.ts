@@ -1,4 +1,4 @@
-/** Formats ParsedDiff into a Groq-ready prompt string with skippable-file filtering. */
+/** Formats ParsedDiff into an LLM-ready prompt string with skippable-file filtering. */
 
 import { MAX_FILE_SIZE_LINES, SKIPPABLE_FILE_PATTERNS } from '../config/constants';
 import type { ParsedChange, ParsedDiff, ParsedFile } from '../types/diff';

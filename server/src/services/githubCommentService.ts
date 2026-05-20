@@ -1,4 +1,4 @@
-/** Posts Groq analysis results as GitHub PR reviews and inline comments. */
+/** Posts AI analysis results as GitHub PR reviews and inline comments. */
 
 import { Octokit } from '@octokit/rest';
 import {

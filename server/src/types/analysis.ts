@@ -1,4 +1,4 @@
-/** TypeScript types for Groq AI code review analysis results. */
+/** TypeScript types for AI code review analysis results. */
 
 export type IssueCategory =
   | 'security'

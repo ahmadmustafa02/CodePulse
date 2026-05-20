@@ -1,6 +1,7 @@
 /** Database service layer: all Prisma operations for organizations, PRs, and issues. */
 
-import type { Developer, Issue, Organization, PullRequest, Repository, User } from '@prisma/client';
+import type { AgentTrace, Developer, Issue, Organization, PullRequest, Repository, RepositorySettings, User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import logger from '../utils/logger';
 import { prisma } from './prismaService';
 
@@ -293,6 +294,278 @@ export class DatabaseService {
       category: group.category,
       count: group._count.category,
     }));
+  }
+
+  async createAgentTrace(pullRequestId: string): Promise<AgentTrace> {
+    return prisma.agentTrace.create({
+      data: {
+        pullRequestId,
+        logs: [],
+      },
+    });
+  }
+
+  async setAgentTraceLogs(traceId: string, logs: Prisma.InputJsonValue): Promise<void> {
+    await prisma.agentTrace.update({
+      where: { id: traceId },
+      data: { logs },
+    });
+  }
+
+  async findRecentIssuesForDeveloperHabitContext(params: {
+    developerId: string;
+    organizationId: string;
+    excludePullRequestId: string;
+    limit: number;
+  }): Promise<
+    Pick<Issue, 'file' | 'line' | 'category' | 'severity' | 'title' | 'createdAt'>[]
+  > {
+    return prisma.issue.findMany({
+      where: {
+        developerId: params.developerId,
+        organizationId: params.organizationId,
+        pullRequestId: { not: params.excludePullRequestId },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: params.limit,
+      select: {
+        file: true,
+        line: true,
+        category: true,
+        severity: true,
+        title: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async getRepositorySettingsByRepositoryId(
+    repositoryId: string,
+  ): Promise<RepositorySettings | null> {
+    return prisma.repositorySettings.findUnique({
+      where: { repositoryId },
+    });
+  }
+
+  async assertRepositoryInOrganization(
+    repositoryId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await prisma.repository.findFirst({
+      where: { id: repositoryId, organizationId },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
+  async upsertRepositorySettings(params: {
+    repositoryId: string;
+    organizationId: string;
+    teamLeadEmail: string | null;
+    escalationEnabled: boolean;
+  }): Promise<RepositorySettings> {
+    const ok = await this.assertRepositoryInOrganization(params.repositoryId, params.organizationId);
+    if (!ok) {
+      throw new Error('Repository not found for organization');
+    }
+    return prisma.repositorySettings.upsert({
+      where: { repositoryId: params.repositoryId },
+      update: {
+        teamLeadEmail: params.teamLeadEmail,
+        escalationEnabled: params.escalationEnabled,
+      },
+      create: {
+        repositoryId: params.repositoryId,
+        teamLeadEmail: params.teamLeadEmail,
+        escalationEnabled: params.escalationEnabled,
+      },
+    });
+  }
+
+  async findRepositoryIdByGithubRepoId(
+    githubRepoId: number,
+  ): Promise<{ id: string } | null> {
+    return prisma.repository.findUnique({
+      where: { githubRepoId: BigInt(githubRepoId) },
+      select: { id: true },
+    });
+  }
+
+  async createProposedCodeFixes(
+    rows: Array<{
+      id: string;
+      pullRequestId: string;
+      fileName: string;
+      beforeCode: string;
+      afterCode: string;
+      lineHunk: string;
+    }>,
+  ): Promise<void> {
+    if (rows.length === 0) {
+      return;
+    }
+    await prisma.proposedCodeFix.createMany({ data: rows });
+  }
+
+  async createCustomIntervention(data: {
+    developerId: string;
+    targetPillar: string;
+    lessonTitle: string;
+    lessonMarkdown: string;
+    status: string;
+    targetSunday: Date;
+  }): Promise<void> {
+    await prisma.customIntervention.create({ data });
+  }
+
+  async getLatestAgentTraceByPullRequestId(
+    pullRequestId: string,
+  ): Promise<{ logs: unknown } | null> {
+    return prisma.agentTrace.findFirst({
+      where: { pullRequestId },
+      orderBy: { createdAt: 'desc' },
+      select: { logs: true },
+    });
+  }
+
+  async getProposedCodeFixesForRepoFile(params: {
+    organizationId: string;
+    repoFullName: string;
+    filePath: string;
+  }): Promise<
+    Array<{
+      id: string;
+      pullRequestId: string;
+      fileName: string;
+      beforeCode: string;
+      afterCode: string;
+      lineHunk: string;
+    }>
+  > {
+    const repository = await prisma.repository.findFirst({
+      where: { organizationId: params.organizationId, fullName: params.repoFullName },
+      select: { id: true },
+    });
+    if (!repository) {
+      return [];
+    }
+    return prisma.proposedCodeFix.findMany({
+      where: {
+        fileName: params.filePath,
+        pullRequest: { repositoryId: repository.id },
+      },
+      orderBy: { id: "asc" },
+      select: {
+        id: true,
+        pullRequestId: true,
+        fileName: true,
+        beforeCode: true,
+        afterCode: true,
+        lineHunk: true,
+      },
+    });
+  }
+
+  async getAgentTraceLogsForOrganization(params: {
+    organizationId: string;
+    pullRequestId: string;
+  }): Promise<{ logs: unknown[]; traceId: string | null; pullRequestExists: boolean }> {
+    const owned = await prisma.pullRequest.findFirst({
+      where: { id: params.pullRequestId, organizationId: params.organizationId },
+      select: { id: true },
+    });
+    if (!owned) {
+      return { logs: [], traceId: null, pullRequestExists: false };
+    }
+    const trace = await prisma.agentTrace.findFirst({
+      where: { pullRequestId: params.pullRequestId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, logs: true },
+    });
+    if (!trace) {
+      return { logs: [], traceId: null, pullRequestExists: true };
+    }
+    const raw = trace.logs;
+    const logs = Array.isArray(raw) ? raw : [];
+    return { logs, traceId: trace.id, pullRequestExists: true };
+  }
+
+  async listRecentAgentTracesForOrganization(
+    organizationId: string,
+    take: number,
+  ): Promise<
+    Array<{
+      traceId: string;
+      pullRequestId: string;
+      prNumber: number;
+      prTitle: string;
+      repoFullName: string;
+      logs: unknown;
+      sessionStartedAt: Date;
+    }>
+  > {
+    const rows = await prisma.agentTrace.findMany({
+      where: { pullRequest: { organizationId } },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        pullRequestId: true,
+        logs: true,
+        createdAt: true,
+        pullRequest: {
+          select: {
+            prNumber: true,
+            title: true,
+            repository: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+    return rows.map((r) => ({
+      traceId: r.id,
+      pullRequestId: r.pullRequestId,
+      prNumber: r.pullRequest.prNumber,
+      prTitle: r.pullRequest.title,
+      repoFullName: r.pullRequest.repository.fullName,
+      logs: r.logs,
+      sessionStartedAt: r.createdAt,
+    }));
+  }
+
+  async listQueuedCustomInterventionsForDeveloper(params: {
+    organizationId: string;
+    developerId: string;
+  }): Promise<
+    Array<{
+      id: string;
+      lessonTitle: string;
+      lessonMarkdown: string;
+      targetPillar: string;
+      targetSunday: Date;
+      status: string;
+    }>
+  > {
+    const owned = await prisma.developer.findFirst({
+      where: { id: params.developerId, organizationId: params.organizationId },
+      select: { id: true },
+    });
+    if (!owned) {
+      return [];
+    }
+    return prisma.customIntervention.findMany({
+      where: { developerId: params.developerId, status: 'QUEUED' },
+      orderBy: { targetSunday: 'asc' },
+      take: 5,
+      select: {
+        id: true,
+        lessonTitle: true,
+        lessonMarkdown: true,
+        targetPillar: true,
+        targetSunday: true,
+        status: true,
+      },
+    });
   }
 }
 

@@ -77,3 +77,19 @@ export type TeamMember = {
   topCategory: string;
   trend: { date: string; count: number }[];
 };
+
+export type AntigravityAgent = "@Triager" | "@HabitAnalyzer" | "@ReviewerSwarm" | "@Orchestrator";
+
+export type AgentTraceLogEntry = {
+  timestamp: string;
+  kind: "session" | "transition" | "step" | "thought" | "tool";
+  agent: AntigravityAgent;
+  message: string;
+  meta?: Record<string, unknown>;
+};
+
+export type AgentTracePollPayload = {
+  logs: AgentTraceLogEntry[];
+  traceId: string | null;
+  fetchedAt: string;
+};

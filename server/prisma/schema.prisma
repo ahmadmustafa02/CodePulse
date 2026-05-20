@@ -33,6 +33,16 @@ model Repository {
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   pullRequests PullRequest[]
+  settings     RepositorySettings?
+}
+
+model RepositorySettings {
+  id                  String   @id @default(uuid())
+  repositoryId        String   @unique
+  teamLeadEmail       String?
+  escalationEnabled   Boolean  @default(false)
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 }
 
 model Developer {
@@ -49,6 +59,7 @@ model Developer {
   organization Organization  @relation(fields: [organizationId], references: [id])
   pullRequests PullRequest[]
   issues       Issue[]
+  customInterventions CustomIntervention[]
 }
 
 model PullRequest {
@@ -72,6 +83,49 @@ model PullRequest {
   repository   Repository   @relation(fields: [repositoryId], references: [id])
   developer    Developer    @relation(fields: [developerId], references: [id])
   issues       Issue[]
+  agentTraces  AgentTrace[]
+  proposedCodeFixes ProposedCodeFix[]
+}
+
+model AgentTrace {
+  id            String   @id @default(uuid())
+  pullRequestId String
+  logs          Json
+  createdAt     DateTime @default(now())
+
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+
+  @@index([pullRequestId])
+  @@index([createdAt])
+}
+
+model ProposedCodeFix {
+  id             String   @id @default(uuid())
+  pullRequestId  String
+  fileName       String
+  beforeCode     String
+  afterCode      String
+  lineHunk       String
+
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+
+  @@index([pullRequestId])
+}
+
+model CustomIntervention {
+  id             String   @id @default(uuid())
+  developerId    String
+  targetPillar   String
+  lessonTitle    String
+  lessonMarkdown String
+  status         String   @default("QUEUED")
+  targetSunday   DateTime
+
+  developer Developer @relation(fields: [developerId], references: [id], onDelete: Cascade)
+
+  @@index([developerId])
+  @@index([status])
+  @@index([targetSunday])
 }
 
 model Issue {

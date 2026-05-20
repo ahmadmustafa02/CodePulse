@@ -18,6 +18,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@google/genai": "^2.4.0",
     "@octokit/app": "^16.1.2",
     "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",
@@ -26,7 +27,6 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0",
-    "groq-sdk": "^1.2.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
     "parse-diff": "^0.12.0",

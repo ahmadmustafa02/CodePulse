@@ -5,6 +5,8 @@ import type {
   RepositoryItem,
   ReviewItem,
   TeamMember,
+  AgentTraceLogEntry,
+  AgentTracePollPayload,
 } from "@/types/api";
 import type { Severity } from "@/lib/severity";
 import { normalizeSeverity } from "@/lib/severity";
@@ -24,6 +26,52 @@ function resolveApiBaseUrl(): string {
 }
 
 export const apiBaseUrl = resolveApiBaseUrl();
+
+const AGENT_TRACE_KINDS = new Set<AgentTraceLogEntry["kind"]>([
+  "session",
+  "transition",
+  "step",
+  "thought",
+  "tool",
+]);
+
+const AGENT_TRACE_AGENTS = new Set<AgentTraceLogEntry["agent"]>([
+  "@Triager",
+  "@HabitAnalyzer",
+  "@ReviewerSwarm",
+  "@Orchestrator",
+]);
+
+function normalizeAgentTraceLogEntry(raw: unknown): AgentTraceLogEntry | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const o = raw as Record<string, unknown>;
+  const timestamp = typeof o.timestamp === "string" ? o.timestamp : "";
+  const kind = o.kind;
+  const agent = o.agent;
+  const message = typeof o.message === "string" ? o.message : "";
+  if (typeof kind !== "string" || typeof agent !== "string") {
+    return null;
+  }
+  if (!AGENT_TRACE_KINDS.has(kind as AgentTraceLogEntry["kind"])) {
+    return null;
+  }
+  if (!AGENT_TRACE_AGENTS.has(agent as AgentTraceLogEntry["agent"])) {
+    return null;
+  }
+  const meta =
+    o.meta !== undefined && o.meta !== null && typeof o.meta === "object" && !Array.isArray(o.meta)
+      ? (o.meta as Record<string, unknown>)
+      : undefined;
+  return {
+    timestamp,
+    kind: kind as AgentTraceLogEntry["kind"],
+    agent: agent as AgentTraceLogEntry["agent"],
+    message,
+    meta,
+  };
+}
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -63,6 +111,108 @@ export const updateDigestPreferences = (digestEmailEnabled: boolean) =>
     body: JSON.stringify({ digestEmailEnabled }),
   });
 
+export async function getAgentTracesForPullRequest(pullRequestId: string): Promise<AgentTracePollPayload> {
+  const id = encodeURIComponent(pullRequestId);
+  const response = await fetch(`${apiBaseUrl}/traces/${id}`, {
+    credentials: "include",
+  });
+  if (response.status === 404) {
+    return { logs: [], traceId: null, fetchedAt: new Date().toISOString() };
+  }
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+  const json = (await response.json()) as ApiResponse<{
+    logs: unknown[];
+    traceId: string | null;
+    fetchedAt: string;
+  }>;
+  if (!json.success) {
+    throw new Error(json.message ?? "API request failed");
+  }
+  const rawLogs = Array.isArray(json.data.logs) ? json.data.logs : [];
+  const logs = rawLogs.map(normalizeAgentTraceLogEntry).filter((e): e is AgentTraceLogEntry => e !== null);
+  return {
+    logs,
+    traceId: json.data.traceId ?? null,
+    fetchedAt: json.data.fetchedAt,
+  };
+}
+
+export type ProposedCodeFixDto = {
+  id: string;
+  pullRequestId: string;
+  fileName: string;
+  beforeCode: string;
+  afterCode: string;
+  lineHunk: string;
+};
+
+export type RepositoryEscalationSettingsDto = {
+  teamLeadEmail: string | null;
+  escalationEnabled: boolean;
+};
+
+export async function getProposedCodeFixesForRepoFile(
+  repoFullName: string,
+  filePath: string,
+): Promise<ProposedCodeFixDto[]> {
+  const q = new URLSearchParams({ repo: repoFullName, file: filePath });
+  return apiFetch<ProposedCodeFixDto[]>(`/proposed-code-fixes?${q.toString()}`);
+}
+
+export async function getRepositoryEscalationSettings(
+  repositoryId: string,
+): Promise<RepositoryEscalationSettingsDto> {
+  return apiFetch<RepositoryEscalationSettingsDto>(
+    `/repository-settings/${encodeURIComponent(repositoryId)}`,
+  );
+}
+
+export async function updateRepositoryEscalationSettings(
+  repositoryId: string,
+  body: { teamLeadEmail: string | null; escalationEnabled: boolean },
+): Promise<RepositoryEscalationSettingsDto> {
+  return apiFetch<RepositoryEscalationSettingsDto>(
+    `/repository-settings/${encodeURIComponent(repositoryId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export type RecentAntigravityTraceFeedItem = {
+  traceId: string;
+  pullRequestId: string;
+  prNumber: number;
+  prTitle: string;
+  repoFullName: string;
+  statusLine: string;
+  sessionStartedAt: string;
+};
+
+export async function getRecentAntigravityTraceFeed(): Promise<RecentAntigravityTraceFeedItem[]> {
+  return apiFetch<RecentAntigravityTraceFeedItem[]>("/antigravity/recent-traces");
+}
+
+export type QueuedInterventionPreview = {
+  id: string;
+  lessonTitle: string;
+  lessonMarkdown: string;
+  targetPillar: string;
+  targetSunday: string;
+  status: string;
+};
+
+export async function getQueuedInterventionsForDeveloper(
+  developerId: string,
+): Promise<QueuedInterventionPreview[]> {
+  return apiFetch<QueuedInterventionPreview[]>(
+    `/antigravity/queued-interventions/${encodeURIComponent(developerId)}`,
+  );
+}
+
 export type RepoRow = {
   id: string;
   owner: string;
@@ -74,6 +224,7 @@ export type RepoRow = {
 };
 
 export type PullRow = {
+  pullRequestId: string;
   id: number;
   repo: string;
   title: string;
@@ -151,6 +302,7 @@ function mapPullState(state: string): PullRow["state"] {
 function mapReviewToPull(r: ReviewItem): PullRow {
   const files = new Set(r.issues.map((i) => i.file)).size;
   return {
+    pullRequestId: r.id,
     id: r.prNumber,
     repo: r.repo,
     title: r.title,

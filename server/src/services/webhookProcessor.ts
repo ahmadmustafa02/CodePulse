@@ -1,11 +1,13 @@
 /** Processes validated GitHub webhook events asynchronously after HTTP acknowledgment. */
 
 import { PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
+import type { AnalyzeDiffWorkspaceContext } from '../types/agentWorkspace';
 import type { WebhookEvent } from '../types/github';
 import { databaseService } from './databaseService';
 import { githubCommentService } from './githubCommentService';
 import { githubDiffService } from './githubDiffService';
-import { groqAnalysisService } from './groqAnalysisService';
+import { antigravityGeminiAnalysisService } from './antigravityGeminiAnalysisService';
+import { runPostAnalysisDownstreamActions } from './postAnalysisDownstreamService';
 import logger from '../utils/logger';
 
 function isSupportedEvent(eventType: string): boolean {
@@ -86,66 +88,7 @@ export class WebhookProcessor {
     });
 
     try {
-      const parsedDiff = await githubDiffService.fetchAndParseDiff({
-        installationId,
-        owner,
-        repo,
-        pullNumber,
-        headSha,
-        prTitle: payload.pull_request.title,
-        prDescription: payload.pull_request.body ?? '',
-      });
-
-      logger.info('Diff parsed successfully', {
-        prNumber: pullNumber,
-        repo: `${owner}/${repo}`,
-        filesChanged: parsedDiff.files.length,
-        totalAdditions: parsedDiff.totalAdditions,
-        totalDeletions: parsedDiff.totalDeletions,
-        files: parsedDiff.files.map((file) => ({
-          filename: file.filename,
-          status: file.status,
-          additions: file.additions,
-          deletions: file.deletions,
-        })),
-      });
-
-      const analysisResult = await groqAnalysisService.analyzeDiff(parsedDiff);
-
-      logger.info('Analysis complete', {
-        prNumber: pullNumber,
-        repo: `${owner}/${repo}`,
-        issuesFound: analysisResult.issues.length,
-        breakdown: analysisResult.issues.reduce<Record<string, number>>((acc, issue) => {
-          acc[issue.severity] = (acc[issue.severity] ?? 0) + 1;
-          return acc;
-        }, {}),
-        issues: analysisResult.issues.map((issue) => ({
-          file: issue.file,
-          line: issue.line,
-          severity: issue.severity,
-          category: issue.category,
-          title: issue.title,
-        })),
-      });
-
-      await githubCommentService.postReview({
-        installationId,
-        owner,
-        repo,
-        pullNumber,
-        headSha,
-        analysisResult,
-      });
-
-      logger.info('PR review pipeline complete', {
-        deliveryId: event.deliveryId,
-        prNumber: pullNumber,
-        repo: `${owner}/${repo}`,
-        issuesFound: analysisResult.issues.length,
-        reviewPosted: true,
-      });
-
+      let workspaceCtx: AnalyzeDiffWorkspaceContext | undefined;
       try {
         const organization = await databaseService.upsertOrganization({
           githubInstallationId: installationId,
@@ -179,6 +122,135 @@ export class WebhookProcessor {
           developerId: developer.id,
         });
 
+        workspaceCtx = {
+          pullRequestId: pullRequest.id,
+          developerId: developer.id,
+          organizationId: organization.id,
+          repositoryId: repository.id,
+        };
+      } catch (preUpsertError) {
+        logger.error('Pre-analysis upsert failed; AgentTrace and habit lookup will be skipped.', {
+          error:
+            preUpsertError instanceof Error ? preUpsertError.message : String(preUpsertError),
+          stack: preUpsertError instanceof Error ? preUpsertError.stack : undefined,
+          prNumber: pullNumber,
+          repo: `${owner}/${repo}`,
+        });
+      }
+
+      const parsedDiff = await githubDiffService.fetchAndParseDiff({
+        installationId,
+        owner,
+        repo,
+        pullNumber,
+        headSha,
+        prTitle: payload.pull_request.title,
+        prDescription: payload.pull_request.body ?? '',
+      });
+
+      logger.info('Diff parsed successfully', {
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+        filesChanged: parsedDiff.files.length,
+        totalAdditions: parsedDiff.totalAdditions,
+        totalDeletions: parsedDiff.totalDeletions,
+        files: parsedDiff.files.map((file) => ({
+          filename: file.filename,
+          status: file.status,
+          additions: file.additions,
+          deletions: file.deletions,
+        })),
+      });
+
+      const analysisResult = await antigravityGeminiAnalysisService.analyzeDiff(parsedDiff, workspaceCtx);
+
+      logger.info('Analysis complete', {
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+        issuesFound: analysisResult.issues.length,
+        breakdown: analysisResult.issues.reduce<Record<string, number>>((acc, issue) => {
+          acc[issue.severity] = (acc[issue.severity] ?? 0) + 1;
+          return acc;
+        }, {}),
+        issues: analysisResult.issues.map((issue) => ({
+          file: issue.file,
+          line: issue.line,
+          severity: issue.severity,
+          category: issue.category,
+          title: issue.title,
+        })),
+      });
+
+      await runPostAnalysisDownstreamActions({
+        analysisResult,
+        workspaceCtx,
+        githubRepoId: payload.repository.id,
+        repoFullName: payload.repository.full_name,
+        prNumber: pullNumber,
+        prTitle: payload.pull_request.title,
+        prAuthorLogin: payload.pull_request.user.login,
+      });
+
+      await githubCommentService.postReview({
+        installationId,
+        owner,
+        repo,
+        pullNumber,
+        headSha,
+        analysisResult,
+      });
+
+      logger.info('PR review pipeline complete', {
+        deliveryId: event.deliveryId,
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+        issuesFound: analysisResult.issues.length,
+        reviewPosted: true,
+      });
+
+      try {
+        let persistCtx = workspaceCtx;
+        if (!persistCtx) {
+          const organization = await databaseService.upsertOrganization({
+            githubInstallationId: installationId,
+            name: owner,
+          });
+
+          const repository = await databaseService.upsertRepository({
+            githubRepoId: payload.repository.id,
+            name: payload.repository.name,
+            fullName: payload.repository.full_name,
+            private: payload.repository.private,
+            organizationId: organization.id,
+          });
+
+          const developer = await databaseService.upsertDeveloper({
+            githubLogin: payload.pull_request.user.login,
+            githubUserId: payload.pull_request.user.id,
+            avatarUrl: payload.pull_request.user.avatar_url,
+            organizationId: organization.id,
+          });
+
+          const pullRequest = await databaseService.upsertPullRequest({
+            githubPrId: payload.pull_request.id,
+            prNumber: payload.pull_request.number,
+            title: payload.pull_request.title,
+            headSha: payload.pull_request.head.sha,
+            baseBranch: payload.pull_request.base.ref,
+            headBranch: payload.pull_request.head.ref,
+            organizationId: organization.id,
+            repositoryId: repository.id,
+            developerId: developer.id,
+          });
+
+          persistCtx = {
+            pullRequestId: pullRequest.id,
+            developerId: developer.id,
+            organizationId: organization.id,
+            repositoryId: repository.id,
+          };
+        }
+
         if (analysisResult.issues.length > 0) {
           const issueData = analysisResult.issues.map((issue) => ({
             file: issue.file,
@@ -189,9 +261,9 @@ export class WebhookProcessor {
             explanation: issue.explanation,
             suggestion: issue.suggestion,
             codeSnippet: issue.codeSnippet,
-            organizationId: organization.id,
-            pullRequestId: pullRequest.id,
-            developerId: developer.id,
+            organizationId: persistCtx.organizationId,
+            pullRequestId: persistCtx.pullRequestId,
+            developerId: persistCtx.developerId,
           }));
           await databaseService.createIssues(issueData);
         }

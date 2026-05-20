@@ -13,6 +13,7 @@ import { CodePulseMark } from "./site-nav";
 import { fetchSession, hasInstallation, signOut } from "@/lib/auth";
 import { api, type DeveloperRow, type RepoRow } from "@/lib/api";
 import { ConnectGitHubButton } from "@/components/codepulse/connect-github-button";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -193,6 +194,7 @@ export function AppShell({
           {children}
         </main>
       </div>
+      <Toaster theme="dark" />
     </div>
   );
 }

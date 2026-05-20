@@ -10,7 +10,7 @@ import { PRVolumeArea, LatencyLine } from "@/components/codepulse/charts";
 import { ChartSkeleton, ListSkeleton, CardGridSkeleton } from "@/components/codepulse/skeletons";
 import { EmptyState } from "@/components/codepulse/empty-state";
 import { SeverityBadge } from "@/components/codepulse/severity";
-import { api } from "@/lib/api";
+import { api, getRecentAntigravityTraceFeed, type RecentAntigravityTraceFeedItem } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard")({
   beforeLoad: () => ensureLoggedIn(),
@@ -55,6 +55,8 @@ function DashboardPage() {
           <Stat label="PRs reviewed all-time" value={totals.reviewed.toLocaleString()} />
         </div>
       )}
+
+      {installed && totals ? <RecentAutonomousWorkspaceFeed /> : null}
 
       {installed ? (
       <>
@@ -191,7 +193,75 @@ function Stat({ label, value, accent }: { label: string; value: string | number;
   return (
     <Panel>
       <div className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">{label}</div>
-      <div className="mt-2 text-2xl font-medium" style={{ color: accent ?? "#fafafa" }}>{value}</div>
+      <div className="mt-2 text-2xl font-medium" style={{ color: accent ?? "#fafafa" }}>
+        {value}
+      </div>
     </Panel>
+  );
+}
+
+function RecentAutonomousWorkspaceFeed() {
+  const feedQ = useQuery({
+    queryKey: ["antigravity", "recent-traces"],
+    queryFn: getRecentAntigravityTraceFeed,
+    refetchInterval: 5000,
+  });
+
+  return (
+    <Panel className="mt-8 ring-1 ring-orange-500/20">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span
+              className="relative flex size-2.5 shrink-0"
+              aria-hidden
+            >
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-orange-400 opacity-40" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-orange-500" />
+            </span>
+            <h3 className="text-sm font-medium text-zinc-100">🤖 Recent Autonomous Workspace Actions</h3>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Live feed from Antigravity agent sessions (refreshes every few seconds).
+          </p>
+        </div>
+      </div>
+
+      {feedQ.isLoading ? (
+        <div className="h-32 animate-pulse rounded-lg bg-zinc-900/60" />
+      ) : feedQ.isError ? (
+        <p className="text-xs text-red-400">Could not load workspace feed.</p>
+      ) : !feedQ.data?.length ? (
+        <p className="text-xs text-zinc-500">
+          No agent traces yet. When PR webhooks run, multi-agent progress will appear here.
+        </p>
+      ) : (
+        <ul className="max-h-56 space-y-2 overflow-y-auto pr-1 [scrollbar-color:rgba(251,146,60,0.35)_transparent]">
+          {feedQ.data.map((row: RecentAntigravityTraceFeedItem) => (
+            <FeedRow key={row.traceId} row={row} />
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function FeedRow({ row }: { row: RecentAntigravityTraceFeedItem }) {
+  const slash = row.repoFullName.indexOf("/");
+  const owner = slash === -1 ? "" : row.repoFullName.slice(0, slash);
+  const repo = slash === -1 ? row.repoFullName : row.repoFullName.slice(slash + 1);
+  return (
+    <li>
+      <Link
+        to="/repos/$owner/$repo"
+        params={{ owner: owner || "_", repo: repo || "_" }}
+        className="block rounded-lg border border-zinc-800/80 bg-zinc-950/50 px-3 py-2.5 transition-colors hover:border-orange-500/30 hover:bg-zinc-900/60"
+      >
+        <p className="text-[13px] leading-snug text-zinc-100">{row.statusLine}</p>
+        <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+          {row.repoFullName} · {row.prTitle}
+        </p>
+      </Link>
+    </li>
   );
 }

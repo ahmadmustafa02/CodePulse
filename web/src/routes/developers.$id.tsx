@@ -7,7 +7,7 @@ import { Panel, PanelHeader } from "@/components/codepulse/panel";
 import { MistakeRadar, SeverityStackBar } from "@/components/codepulse/charts";
 import { ChartSkeleton, ListSkeleton } from "@/components/codepulse/skeletons";
 import { EmptyState } from "@/components/codepulse/empty-state";
-import { api } from "@/lib/api";
+import { api, getQueuedInterventionsForDeveloper } from "@/lib/api";
 
 export const Route = createFileRoute("/developers/$id")({
   beforeLoad: () => ensureLoggedIn(),
@@ -94,6 +94,8 @@ function DeveloperPage() {
         </Panel>
       </div>
 
+      <TargetHabitInterventionLoop developerId={d.id} />
+
       <div className="mt-6">
         <Panel padded={false}>
           <div className="border-b border-zinc-800/60 px-6 py-4">
@@ -117,6 +119,80 @@ function DeveloperPage() {
         </Panel>
       </div>
     </AppShell>
+  );
+}
+
+function interventionMarkdownSnippet(md: string, max = 220): string {
+  const plain = md
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/\n+/g, " ")
+    .trim();
+  if (plain.length <= max) return plain;
+  return `${plain.slice(0, max).trim()}…`;
+}
+
+function formatTargetSunday(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function TargetHabitInterventionLoop({ developerId }: { developerId: string }) {
+  const q = useQuery({
+    queryKey: ["antigravity", "queued-interventions", developerId],
+    queryFn: () => getQueuedInterventionsForDeveloper(developerId),
+  });
+
+  const next = q.data?.[0];
+
+  return (
+    <div className="mt-6">
+      <Panel className="overflow-hidden ring-1 ring-orange-500/15">
+        <div className="mb-4">
+          <h3 className="text-sm font-medium text-zinc-100">🎯 Target Habit Intervention Loop</h3>
+          <p className="mt-1 text-xs text-zinc-500">
+            Queued micro-lessons for this developer (Sunday delivery in UTC).
+          </p>
+        </div>
+
+        {q.isLoading ? (
+          <div className="h-36 animate-pulse rounded-lg bg-zinc-900/60" />
+        ) : q.isError ? (
+          <p className="text-xs text-red-400">Could not load intervention queue.</p>
+        ) : !next ? (
+          <p className="text-xs text-zinc-500">No queued interventions for this developer.</p>
+        ) : (
+          <div className="relative rounded-xl border border-zinc-800/90 bg-gradient-to-br from-zinc-950 via-zinc-950 to-orange-950/25 p-5 shadow-[0_0_0_1px_rgba(251,146,60,0.08)_inset]">
+            <div className="absolute right-4 top-4 rounded-full border border-orange-500/25 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-orange-200/90">
+              Queued
+            </div>
+            <p className="text-[11px] font-medium uppercase tracking-widest text-orange-300/80">
+              Next Sunday&apos;s Micro-Lesson
+            </p>
+            <p className="mt-2 text-base font-medium leading-snug text-zinc-50">{next.lessonTitle}</p>
+            <p className="mt-1 text-xs text-zinc-500">
+              {formatTargetSunday(next.targetSunday)}
+              {next.targetPillar ? ` · ${next.targetPillar}` : null}
+            </p>
+            <p className="mt-4 border-t border-zinc-800/80 pt-4 text-[13px] leading-relaxed text-zinc-300">
+              {interventionMarkdownSnippet(next.lessonMarkdown)}
+            </p>
+            {q.data && q.data.length > 1 ? (
+              <p className="mt-3 text-[11px] text-zinc-600">
+                +{q.data.length - 1} more queued after this run.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </Panel>
+    </div>
   );
 }
 

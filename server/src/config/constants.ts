@@ -45,8 +45,9 @@ export const DEV_NULL_PATH = '/dev/null';
 
 export const GITHUB_DIFF_MEDIA_FORMAT = 'diff';
 
-export const GROQ_MODEL = 'llama-3.3-70b-versatile';
-export const GROQ_MAX_COMPLETION_TOKENS = 4096;
+/** Gemini Interactions API model for Antigravity-style PR analysis (Interactions API). */
+export const GEMINI_ANTIGRAVITY_MODEL = 'gemini-3.5-flash';
+export const GEMINI_MAX_OUTPUT_TOKENS = 8192;
 export const MAX_DIFF_TOKENS = 6000;
 export const MAX_DIFF_CHAR_LIMIT = MAX_DIFF_TOKENS * 4;
 export const MAX_DIFF_CHUNK_CHAR_LIMIT = 20000;
@@ -69,7 +70,7 @@ export const SKIPPABLE_FILE_PATTERNS = [
 export const GITHUB_REVIEW_EVENT_COMMENT = 'COMMENT';
 export const GITHUB_REVIEW_SIDE_RIGHT = 'RIGHT';
 
-export const GROQ_TOOL_NAME = 'report_code_issues';
+export const CODE_REVIEW_ISSUES_TOOL_NAME = 'report_code_issues';
 export const CHARS_PER_ESTIMATED_TOKEN = 4;
 
 export const DIGEST_SECRET_HEADER = 'x-digest-secret';

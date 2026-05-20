@@ -13,7 +13,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?style=flat-square)
+![Gemini](https://img.shields.io/badge/Gemini-3.5_Flash-4285F4?style=flat-square&logo=google&logoColor=white)
 ![Azure](https://img.shields.io/badge/Azure-0078D4?style=flat-square&logo=microsoftazure&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat-square&logo=vercel&logoColor=white)
 
@@ -48,7 +48,7 @@ Each **Sunday**, developers who opt in receive a personalized email digest summa
 | | |
 |---|---|
 | 🤖 **Automatic PR reviews** | Triggered on `opened`, `synchronize`, and `reopened`. Inline comments on exact lines with **Critical / High / Medium / Low** severity. |
-| 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. Groq + Llama 3.3 70B with structured tool-calling returns typed JSON per issue. |
+| 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. **Google Gemini Interactions API** (`gemini-3.5-flash`) streams Antigravity-style traces into `AgentTrace`, with JSON-structured findings per issue. |
 | 📊 **Per-developer issue tracking** | Every finding is stored per developer, repo, and PR in Neon — powers dashboard charts and digests. |
 | 📬 **Weekly digest emails** | Opt-in via the dashboard. Aggregated by category, sent through Resend. Triggered by GitHub Actions every **Sunday 09:00 UTC**. |
 | 📈 **Team dashboard** | Org-wide metrics: open PRs, critical findings, PR volume vs reviews (all connected repos combined). |
@@ -78,9 +78,9 @@ Each **Sunday**, developers who opt in receive a personalized email digest summa
                                       │
                                       ▼
                        ┌──────────────────────────────┐
-                       │  Groq · Llama 3.3 70B        │
-                       │  Structured tool-calling     │
-                       │  → typed JSON per issue      │
+                       │  Gemini Interactions API     │
+                       │  gemini-3.5-flash + SSE      │
+                       │  → JSON issues + AgentTrace  │
                        └──────────────┬───────────────┘
                                       │
                   ┌───────────────────┴───────────────────┐
@@ -118,7 +118,7 @@ Webhooks hit the **API on Azure** directly. The **Vercel** frontend proxies `/ap
 - Node.js · Express · TypeScript
 - Prisma ORM
 - PostgreSQL (Neon serverless)
-- Groq API (Llama 3.3 70B)
+- Google Gemini API (`gemini-3.5-flash`, Interactions)
 - Octokit
 - Resend
 - Azure App Service
@@ -165,7 +165,7 @@ Webhooks hit the **API on Azure** directly. The **Vercel** frontend proxies `/ap
 - **Node.js** 18+
 - **PostgreSQL** — [Neon](https://neon.tech) free tier works great
 - **GitHub App + OAuth App** — [setup docs](https://docs.github.com/en/apps/creating-github-apps)
-- **Groq API key** — [console.groq.com](https://console.groq.com)
+- **Google AI (Gemini) API key** — [aistudio.google.com](https://aistudio.google.com) (Interactions / `GEMINI_API_KEY`)
 - **Resend API key** — [resend.com](https://resend.com) (for weekly digests)
 
 ### 1 · Clone & install
@@ -261,7 +261,7 @@ curl -X POST https://your-api-host/api/v1/digest/trigger \
 | `GITHUB_OAUTH_CLIENT_ID` | OAuth App client ID |
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret |
 | `GITHUB_OAUTH_CALLBACK_URL` | Must match OAuth app settings exactly |
-| `GROQ_API_KEY` | Groq API key |
+| `GEMINI_API_KEY` | Google AI Studio / Gemini API key (Interactions) |
 | `AUTH_SECRET` | Session JWT signing secret (min 32 chars) |
 | `WEB_APP_URL` | Frontend origin for CORS and redirects (`http://localhost:8080` locally) |
 | `RESEND_API_KEY` | Resend API key |
