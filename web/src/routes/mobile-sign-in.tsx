@@ -39,7 +39,12 @@ function MobileSignInPage() {
   const [submitting, setSubmitting] = useState(false);
 
   async function openSettingsPage() {
-    window.open(SETTINGS_URL, "_blank", "noopener,noreferrer");
+    try {
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url: SETTINGS_URL });
+    } catch {
+      window.open(SETTINGS_URL, "_blank", "noopener,noreferrer");
+    }
   }
 
   async function handleSignIn() {
