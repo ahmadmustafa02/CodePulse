@@ -9,6 +9,8 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
+import { StatusBar, Style } from "@capacitor/status-bar";
 import { fetchSession } from "@/lib/auth";
 
 import appCss from "../styles.css?url";
@@ -141,6 +143,19 @@ function SessionBootstrap() {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void (async () => {
+      try {
+        await StatusBar.setOverlaysWebView({ overlay: false });
+        await StatusBar.setStyle({ style: Style.Dark });
+        await StatusBar.setBackgroundColor({ color: "#000000" });
+      } catch {
+        /* plugin unavailable or web — ignore */
+      }
+    })();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
