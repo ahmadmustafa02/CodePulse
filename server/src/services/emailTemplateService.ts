@@ -9,6 +9,15 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: '#22c55e',
 };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatDateRange(weekStart: Date, weekEnd: Date): string {
   const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
   return `${weekStart.toLocaleDateString('en-US', options)} – ${weekEnd.toLocaleDateString('en-US', options)}`;
@@ -21,10 +30,10 @@ function renderSeverityBadges(issuesBySeverity: Record<string, number>): string 
   }
 
   return entries
-    .map(
-      ([severity, count]) =>
-        `<span style="display:inline-block;margin:4px 8px 4px 0;padding:6px 12px;border-radius:9999px;background:${SEVERITY_COLORS[severity] ?? '#6b7280'};color:#fff;font-size:13px;font-weight:600;text-transform:uppercase;">${severity}: ${count}</span>`,
-    )
+    .map(([severity, count]) => {
+      const safeSeverity = escapeHtml(severity);
+      return `<span style="display:inline-block;margin:4px 8px 4px 0;padding:6px 12px;border-radius:9999px;background:${SEVERITY_COLORS[severity] ?? '#6b7280'};color:#fff;font-size:13px;font-weight:600;text-transform:uppercase;">${safeSeverity}: ${count}</span>`;
+    })
     .join('');
 }
 
@@ -35,10 +44,10 @@ function renderCategoryTable(issuesByCategory: Record<string, number>): string {
   }
 
   const rows = entries
-    .map(
-      ([category, count]) =>
-        `<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${category}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${count}</td></tr>`,
-    )
+    .map(([category, count]) => {
+      const safeCategory = escapeHtml(category);
+      return `<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${safeCategory}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${count}</td></tr>`;
+    })
     .join('');
 
   return `<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr><th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e5e7eb;color:#374151;">Category</th><th style="padding:8px 12px;text-align:right;border-bottom:2px solid #e5e7eb;color:#374151;">Count</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -50,16 +59,17 @@ function renderTopFiles(topFiles: Array<{ file: string; count: number }>): strin
   }
 
   return topFiles
-    .map(
-      (entry) =>
-        `<p style="margin:0 0 8px;font-family:monospace;font-size:13px;color:#111827;"><strong>${entry.count}</strong> issue(s) in <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;">${entry.file}</code></p>`,
-    )
+    .map((entry) => {
+      const safeFile = escapeHtml(entry.file);
+      return `<p style="margin:0 0 8px;font-family:monospace;font-size:13px;color:#111827;"><strong>${entry.count}</strong> issue(s) in <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;">${safeFile}</code></p>`;
+    })
     .join('');
 }
 
 function renderIssuesBody(digest: DeveloperDigest, weekRange: string): string {
+  const safeWeekRange = escapeHtml(weekRange);
   return `
-    <p style="margin:0 0 16px;font-size:16px;color:#111827;">Week of ${weekRange}</p>
+    <p style="margin:0 0 16px;font-size:16px;color:#111827;">Week of ${safeWeekRange}</p>
     <div style="margin-bottom:24px;padding:16px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;">
       <p style="margin:0 0 4px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;">Summary</p>
       <p style="margin:0;font-size:28px;font-weight:700;color:#111827;">${digest.totalIssues} issue(s) found</p>
@@ -79,8 +89,9 @@ function renderIssuesBody(digest: DeveloperDigest, weekRange: string): string {
 }
 
 function renderCleanWeekBody(weekRange: string): string {
+  const safeWeekRange = escapeHtml(weekRange);
   return `
-    <p style="margin:0 0 16px;font-size:16px;color:#111827;">Week of ${weekRange}</p>
+    <p style="margin:0 0 16px;font-size:16px;color:#111827;">Week of ${safeWeekRange}</p>
     <div style="padding:24px;background:#ecfdf5;border-radius:8px;border:1px solid #a7f3d0;text-align:center;">
       <p style="margin:0;font-size:20px;font-weight:700;color:#047857;">Congratulations!</p>
       <p style="margin:12px 0 0;font-size:15px;color:#065f46;">No issues were flagged in your PRs this week. Keep up the great work.</p>
