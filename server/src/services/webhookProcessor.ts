@@ -1,7 +1,10 @@
 /** Processes validated GitHub webhook events asynchronously after HTTP acknowledgment. */
 
 import { PR_ACTIONS_TO_PROCESS, SUPPORTED_EVENTS } from '../config/constants';
-import type { WebhookEvent } from '../types/github';
+import {
+  resolvePullRequestLifecycleState,
+  type WebhookEvent,
+} from '../types/github';
 import { databaseService } from './databaseService';
 import { githubCommentService } from './githubCommentService';
 import { githubDiffService } from './githubDiffService';
@@ -25,6 +28,12 @@ export class WebhookProcessor {
           deliveryId: event.deliveryId,
           reason: 'unsupported_event',
         });
+        return;
+      }
+
+      // Closed/merged events update lifecycle state only — never the AI review pipeline.
+      if (event.payload.action === 'closed') {
+        await this.syncPullRequestLifecycleState(event);
         return;
       }
 
@@ -56,6 +65,46 @@ export class WebhookProcessor {
         eventType: event.eventType,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
+      });
+    }
+  }
+
+  private async syncPullRequestLifecycleState(event: WebhookEvent): Promise<void> {
+    const { payload } = event;
+    const state = resolvePullRequestLifecycleState(payload.pull_request);
+
+    try {
+      const updated = await databaseService.updatePullRequestLifecycleState({
+        githubRepoId: payload.repository.id,
+        githubPrId: payload.pull_request.id,
+        state,
+        title: payload.pull_request.title,
+      });
+
+      if (!updated) {
+        logger.info('PR lifecycle sync skipped; pull request not in database', {
+          deliveryId: event.deliveryId,
+          repo: payload.repository.full_name,
+          prNumber: payload.pull_request.number,
+          state,
+          action: payload.action,
+        });
+        return;
+      }
+
+      logger.info('PR lifecycle state updated', {
+        deliveryId: event.deliveryId,
+        repo: payload.repository.full_name,
+        prNumber: payload.pull_request.number,
+        state,
+        action: payload.action,
+      });
+    } catch (error) {
+      logger.error('Failed to sync PR lifecycle state', {
+        deliveryId: event.deliveryId,
+        repo: payload.repository.full_name,
+        prNumber: payload.pull_request.number,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
@@ -211,6 +260,7 @@ export class WebhookProcessor {
           headSha: payload.pull_request.head.sha,
           baseBranch: payload.pull_request.base.ref,
           headBranch: payload.pull_request.head.ref,
+          state: resolvePullRequestLifecycleState(payload.pull_request),
           organizationId: organization.id,
           repositoryId: repository.id,
           developerId: developer.id,

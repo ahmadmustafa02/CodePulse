@@ -31,6 +31,7 @@ type UpsertPullRequestParams = {
   headSha: string;
   baseBranch: string;
   headBranch: string;
+  state: string;
   organizationId: string;
   repositoryId: string;
   developerId: string;
@@ -242,7 +243,7 @@ export class DatabaseService {
         baseBranch: params.baseBranch,
         headBranch: params.headBranch,
         prNumber: params.prNumber,
-        state: 'open',
+        state: params.state,
         updatedAt: new Date(),
       },
       create: {
@@ -252,6 +253,7 @@ export class DatabaseService {
         headSha: params.headSha,
         baseBranch: params.baseBranch,
         headBranch: params.headBranch,
+        state: params.state,
         organizationId: params.organizationId,
         repositoryId: params.repositoryId,
         developerId: params.developerId,
@@ -261,9 +263,40 @@ export class DatabaseService {
     logger.info('PullRequest upserted', {
       prNumber: params.prNumber,
       pullRequestId: pullRequest.id,
+      state: params.state,
     });
 
     return pullRequest;
+  }
+
+  /** Updates lifecycle state for an existing PR row; no-op if the PR was never persisted. */
+  async updatePullRequestLifecycleState(params: {
+    githubRepoId: number;
+    githubPrId: number;
+    state: string;
+    title?: string;
+  }): Promise<boolean> {
+    const repository = await prisma.repository.findUnique({
+      where: { githubRepoId: BigInt(params.githubRepoId) },
+      select: { id: true },
+    });
+    if (!repository) {
+      return false;
+    }
+
+    const result = await prisma.pullRequest.updateMany({
+      where: {
+        githubPrId: BigInt(params.githubPrId),
+        repositoryId: repository.id,
+      },
+      data: {
+        state: params.state,
+        ...(params.title !== undefined ? { title: params.title } : {}),
+        updatedAt: new Date(),
+      },
+    });
+
+    return result.count > 0;
   }
 
   async createIssues(issues: CreateIssueInput[]): Promise<number> {

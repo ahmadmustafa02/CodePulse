@@ -37,6 +37,7 @@ export type GitHubPullRequest = {
   title: string;
   body: string | null;
   state: 'open' | 'closed';
+  merged?: boolean;
   html_url: string;
   diff_url: string;
   head: GitHubPullRequestRef;
@@ -49,6 +50,23 @@ export type GitHubPullRequest = {
   deletions: number;
   changed_files: number;
 };
+
+/** GitHub only exposes open|closed; merged is derived from merged/merged_at. */
+export type PullRequestLifecycleState = 'open' | 'closed' | 'merged';
+
+export function resolvePullRequestLifecycleState(pr: {
+  state: 'open' | 'closed';
+  merged?: boolean;
+  merged_at: string | null;
+}): PullRequestLifecycleState {
+  if (pr.merged === true || pr.merged_at != null) {
+    return 'merged';
+  }
+  if (pr.state === 'closed') {
+    return 'closed';
+  }
+  return 'open';
+}
 
 export type PullRequestWebhookPayload = {
   action: PullRequestAction;
