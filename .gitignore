@@ -10,3 +10,6 @@ coverage
 server/src/**/*.js
 server/dist/
 dist/
+
+server/eval/results/latest.json
+server/eval/results/latest.md
