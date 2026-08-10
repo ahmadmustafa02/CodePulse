@@ -5,7 +5,6 @@ import Groq from 'groq-sdk';
 import { z } from 'zod';
 import {
   GROQ_MAX_COMPLETION_TOKENS,
-  GROQ_MODEL,
   GROQ_TOOL_NAME,
   MAX_DIFF_CHUNK_CHAR_LIMIT,
   MAX_ISSUES_PER_PR,
@@ -195,7 +194,7 @@ function buildEmptyResult(parsedDiff: ParsedDiff): AnalysisResult {
     issues: [],
     filesAnalyzed: 0,
     analyzedAt: new Date().toISOString(),
-    modelUsed: GROQ_MODEL,
+    modelUsed: env.GROQ_MODEL,
     tokensUsed: 0,
   };
 }
@@ -363,7 +362,7 @@ export class GroqAnalysisService {
 
     try {
       const response = await this.groq.chat.completions.create({
-        model: GROQ_MODEL,
+        model: env.GROQ_MODEL,
         max_tokens: TRIAGE_MAX_COMPLETION_TOKENS,
         messages: [
           { role: 'system', content: TRIAGE_SYSTEM_PROMPT },
@@ -419,7 +418,7 @@ export class GroqAnalysisService {
     parsedDiff: ParsedDiff,
   ): Promise<{ issues: DetectedIssue[]; tokensUsed: number }> {
     const response = await this.groq.chat.completions.create({
-      model: GROQ_MODEL,
+      model: env.GROQ_MODEL,
       max_tokens: GROQ_MAX_COMPLETION_TOKENS,
       tools: [codeReviewTool],
       tool_choice: { type: 'function', function: { name: GROQ_TOOL_NAME } },
@@ -563,7 +562,7 @@ export class GroqAnalysisService {
         prNumber: parsedDiff.prNumber,
         issueCount: cappedIssues.length,
         tokensUsed,
-        model: GROQ_MODEL,
+        model: env.GROQ_MODEL,
         chunksAnalyzed: chunks.length,
       });
 
@@ -574,7 +573,7 @@ export class GroqAnalysisService {
         issues: cappedIssues,
         filesAnalyzed: filesToReview.length,
         analyzedAt: new Date().toISOString(),
-        modelUsed: GROQ_MODEL,
+        modelUsed: env.GROQ_MODEL,
         tokensUsed,
       };
     } catch (error) {

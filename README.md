@@ -13,7 +13,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?style=flat-square)
+![Groq](https://img.shields.io/badge/Groq-GPT--OSS--120B-F55036?style=flat-square)
 ![Azure](https://img.shields.io/badge/Azure-0078D4?style=flat-square&logo=microsoftazure&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat-square&logo=vercel&logoColor=white)
 
@@ -48,7 +48,7 @@ Each **Sunday**, developers who opt in receive a personalized email digest summa
 | | |
 |---|---|
 | 🤖 **Automatic PR reviews** | Triggered on `opened`, `synchronize`, and `reopened`. Inline comments on exact lines with **Critical / High / Medium / Low** severity. |
-| 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. Groq + Llama 3.3 70B with structured tool-calling returns typed JSON per issue. |
+| 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. Groq + GPT-OSS 120B with structured tool-calling returns typed JSON per issue. |
 | 📊 **Per-developer issue tracking** | Every finding is stored per developer, repo, and PR in Neon — powers dashboard charts and digests. |
 | 📬 **Weekly digest emails** | Opt-in via the dashboard. Aggregated by category, sent through Resend. Triggered by GitHub Actions every **Sunday 09:00 UTC**. |
 | 📈 **Team dashboard** | Org-wide metrics: open PRs, critical findings, PR volume vs reviews (all connected repos combined). |
@@ -78,7 +78,7 @@ Each **Sunday**, developers who opt in receive a personalized email digest summa
                                       │
                                       ▼
                        ┌──────────────────────────────┐
-                       │  Groq · Llama 3.3 70B        │
+                       │  Groq · GPT-OSS 120B         │
                        │  Structured tool-calling     │
                        │  → typed JSON per issue      │
                        └──────────────┬───────────────┘
@@ -118,7 +118,7 @@ Webhooks hit the **API on Azure** directly. The **Vercel** frontend proxies `/ap
 - Node.js · Express · TypeScript
 - Prisma ORM
 - PostgreSQL (Neon serverless)
-- Groq API (Llama 3.3 70B)
+- Groq API (GPT-OSS 120B)
 - Octokit
 - Resend
 - Azure App Service
