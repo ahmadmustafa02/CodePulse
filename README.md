@@ -309,6 +309,31 @@ npm run lint
 
 ---
 
+## Evaluation
+
+CodePulse includes a small offline review benchmark under `server/eval/`: **20 labeled TypeScript diffs** (12 with known defects, 8 clean).
+
+Verified results on this suite (model: `openai/gpt-oss-120b`):
+
+| Stage | Recall | Precision | F1 | FP findings |
+|---|---|---|---|---|
+| Baseline | 100% | 30.0% | 46.2% | 28 |
+| After first evidence-based prompt refinement | 100% | 46.2% | 63.2% | 14 |
+
+The production system prompt reflects that first refinement. A second experimental prompt was reverted and is not the reported system result.
+
+**Limitation:** This is a small, labeled/synthetic benchmark. It is useful for regression checks and prompt iteration, but should not be treated as a large-scale or statistically conclusive evaluation.
+
+Reproduce locally (requires a configured Groq API key):
+
+```bash
+cd server && npm run eval:offline
+```
+
+See [`server/eval/README.md`](server/eval/README.md) for matching rules and output paths. Generated `latest.json` / `latest.md` reports are gitignored.
+
+---
+
 ## ☁️ Deployment
 
 | Layer | Host |
