@@ -77,12 +77,31 @@ export class WebhookProcessor {
     const repo = payload.repository.name;
     const pullNumber = payload.pull_request.number;
     const headSha = payload.pull_request.head.sha;
+    const githubRepoId = payload.repository.id;
+
+    const alreadyProcessed = await databaseService.hasSuccessfullyProcessedPrHead({
+      githubRepoId,
+      prNumber: pullNumber,
+      headSha,
+    });
+    if (alreadyProcessed) {
+      logger.info('PR review skipped; head already processed', {
+        deliveryId: event.deliveryId,
+        repo: payload.repository.full_name,
+        prNumber: pullNumber,
+        headSha,
+        action: payload.action,
+        reason: 'duplicate_pr_head',
+      });
+      return;
+    }
 
     logger.info('PR review pipeline started', {
       deliveryId: event.deliveryId,
       prNumber: pullNumber,
       repo: payload.repository.full_name,
       installationId,
+      headSha,
     });
 
     try {
@@ -128,6 +147,24 @@ export class WebhookProcessor {
           title: issue.title,
         })),
       });
+
+      // Re-check after slow AI work: another delivery may have completed this head.
+      const processedConcurrently = await databaseService.hasSuccessfullyProcessedPrHead({
+        githubRepoId,
+        prNumber: pullNumber,
+        headSha,
+      });
+      if (processedConcurrently) {
+        logger.info('PR review skipped before posting; head already processed', {
+          deliveryId: event.deliveryId,
+          repo: payload.repository.full_name,
+          prNumber: pullNumber,
+          headSha,
+          action: payload.action,
+          reason: 'duplicate_pr_head',
+        });
+        return;
+      }
 
       await githubCommentService.postReview({
         installationId,

@@ -207,6 +207,27 @@ export class DatabaseService {
     return developer;
   }
 
+  /**
+   * True when this repository + PR number already has a successfully persisted review
+   * for the given head SHA. `PullRequest.headSha` is only written after the review
+   * pipeline completes, so a match means the head was fully processed.
+   */
+  async hasSuccessfullyProcessedPrHead(params: {
+    githubRepoId: number;
+    prNumber: number;
+    headSha: string;
+  }): Promise<boolean> {
+    const existing = await prisma.pullRequest.findFirst({
+      where: {
+        prNumber: params.prNumber,
+        headSha: params.headSha,
+        repository: { githubRepoId: BigInt(params.githubRepoId) },
+      },
+      select: { id: true },
+    });
+    return existing !== null;
+  }
+
   async upsertPullRequest(params: UpsertPullRequestParams): Promise<PullRequest> {
     const pullRequest = await prisma.pullRequest.upsert({
       where: {
