@@ -45,7 +45,6 @@ export const DEV_NULL_PATH = '/dev/null';
 
 export const GITHUB_DIFF_MEDIA_FORMAT = 'diff';
 
-export const GROQ_MODEL = 'llama-3.3-70b-versatile';
 export const GROQ_MAX_COMPLETION_TOKENS = 4096;
 export const MAX_DIFF_TOKENS = 6000;
 export const MAX_DIFF_CHAR_LIMIT = MAX_DIFF_TOKENS * 4;
