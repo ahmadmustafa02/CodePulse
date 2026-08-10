@@ -2,18 +2,17 @@
 
 # ⚡ CodePulse
 
-### AI code review that learns your team's mistakes — and helps them stop repeating them.
+### AI-powered GitHub code review with structured findings, developer analytics, and empirical evaluation.
 
 [![Live App](https://img.shields.io/badge/Live_App-getcodepulse.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://getcodepulse.vercel.app)
 [![GitHub](https://img.shields.io/badge/GitHub-CodePulse-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ahmadmustafa02/CodePulse)
-[![License](https://img.shields.io/badge/License-MIT-3DA639?style=for-the-badge)](LICENSE)
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?style=flat-square)
+![Groq](https://img.shields.io/badge/Groq-GPT--OSS--120B-F55036?style=flat-square)
 ![Azure](https://img.shields.io/badge/Azure-0078D4?style=flat-square&logo=microsoftazure&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat-square&logo=vercel&logoColor=white)
 
@@ -21,154 +20,191 @@
 
 ---
 
-<img width="1346" height="832" alt="codepulse2" src="https://github.com/user-attachments/assets/90b10f63-399c-4855-a402-863a86b9f4c4" />
-<img width="1474" height="896" alt="codepulsedashboard" src="https://github.com/user-attachments/assets/15b137d5-b2fe-43bb-80ae-049112fd7492" />
-<img width="1357" height="882" alt="digest" src="https://github.com/user-attachments/assets/3658ee11-fc66-463c-9dee-d247a321ce85" />
-
----
-
-## 🎯 The pitch
-
-> **CodeRabbit reviews your PR. CodePulse reviews your habits.**
-
-Install once on GitHub, pick your repos, and open a pull request. CodePulse reviews the diff inline like a senior engineer would — pinned to exact lines, with severity labels — then stores every finding against the developer who wrote it.
-
-Each **Sunday**, developers who opt in receive a personalized email digest summarizing their recurring issue categories from the past week.
+**CodePulse** is an end-to-end AI code-review system for GitHub pull requests. It verifies webhooks, analyzes diffs with structured LLM tool-calling, posts exact-line review comments, persists findings for analytics, and ships an offline evaluation harness for prompt/model regression checks. It is designed as a production-style research system—not a thin chatbot wrapper around a model API.
 
 <div align="center">
 
-**[→ Try the live app](https://getcodepulse.vercel.app)**
+**[→ Live app](https://getcodepulse.vercel.app)** · **[GitHub](https://github.com/ahmadmustafa02/CodePulse)**
 
 </div>
 
 ---
 
-## ✨ What it does
+<img width="1346" height="832" alt="CodePulse product overview" src="https://github.com/user-attachments/assets/90b10f63-399c-4855-a402-863a86b9f4c4" />
+<img width="1474" height="896" alt="CodePulse dashboard" src="https://github.com/user-attachments/assets/15b137d5-b2fe-43bb-80ae-049112fd7492" />
+<img width="1357" height="882" alt="CodePulse weekly digest" src="https://github.com/user-attachments/assets/3658ee11-fc66-463c-9dee-d247a321ce85" />
 
-| | |
+---
+
+## Why CodePulse
+
+| Capability | What it provides |
 |---|---|
-| 🤖 **Automatic PR reviews** | Triggered on `opened`, `synchronize`, and `reopened`. Inline comments on exact lines with **Critical / High / Medium / Low** severity. |
-| 🧠 **Two-pass AI analysis** | File triage first, then chunked deep review. Groq + Llama 3.3 70B with structured tool-calling returns typed JSON per issue. |
-| 📊 **Per-developer issue tracking** | Every finding is stored per developer, repo, and PR in Neon — powers dashboard charts and digests. |
-| 📬 **Weekly digest emails** | Opt-in via the dashboard. Aggregated by category, sent through Resend. Triggered by GitHub Actions every **Sunday 09:00 UTC**. |
-| 📈 **Team dashboard** | Org-wide metrics: open PRs, critical findings, PR volume vs reviews (all connected repos combined). |
-| 📂 **Per-repository view** | Severity over time, health score, PR list, and top files — **one repo at a time** with a repo selector when multiple are connected. |
-| 🔒 **Multi-tenant isolation** | Scoped per GitHub App installation — each org's data is fully isolated. |
-| 🛡️ **Signed webhooks** | HMAC-SHA256 verification on every event. Lockfiles, minified assets, and generated files are skipped automatically. |
+| Automated PR reviews | Reviews on `opened`, `synchronize`, and `reopened` |
+| Structured LLM analysis | Two-pass triage + chunked review via `GroqAnalysisService.analyzeDiff()` |
+| Exact-line GitHub comments | Inline findings with category, severity, explanation, and suggestion |
+| Multi-tenant isolation | Data scoped to each GitHub App installation |
+| Installation authorization | Users can link only installations they can access on GitHub |
+| HMAC webhook verification | Every delivery verified with HMAC-SHA256 |
+| PR-head idempotency | Same repository + PR + head SHA is not reviewed twice |
+| Lifecycle tracking | Persists `open`, `closed`, and `merged` from GitHub payloads |
+| Developer / repo analytics | Findings stored for dashboard charts and history |
+| Weekly digest | Opt-in Resend email summarizing recent issue categories and file hotspots |
+| Offline evaluation | Labeled TypeScript benchmark for prompt/model regression |
+| Production deployment | Vercel frontend, Azure API, Neon PostgreSQL, GitHub Actions digest cron |
+
+Analytics reflect historical findings per developer and repository. CodePulse does **not** fine-tune or retrain a model from team data.
 
 ---
 
-## 🏗️ Architecture
+## How it works
+
+1. A GitHub App webhook delivers a pull-request event.
+2. The API verifies the HMAC signature and accepts the delivery.
+3. The webhook processor skips duplicate heads (same repo + PR + SHA already processed successfully).
+4. The PR diff is fetched and parsed.
+5. `GroqAnalysisService.analyzeDiff()` runs optional file triage, then chunked deep analysis with structured tool calling and Zod validation.
+6. Findings (category, severity, file, line, title, explanation, suggestion, code snippet) are posted as GitHub review comments and stored in PostgreSQL.
+7. The dashboard surfaces installation-scoped analytics; opt-in weekly digests are emailed via Resend.
+
+The production analysis prompt is the **first evidence-based refinement** (higher precision at 100% recall on the offline suite). A second experimental prompt was evaluated and **reverted**; it is not the production configuration.
+
+---
+
+## Architecture
 
 ```
-                       ┌──────────────────────────────┐
-                       │      GitHub PR opened        │
-                       └──────────────┬───────────────┘
-                                      │
-                                      ▼
-                       ┌──────────────────────────────┐
-                       │  Webhook (HMAC-SHA256 ✓)     │
-                       └──────────────┬───────────────┘
-                                      │
-                                      ▼
-                       ┌──────────────────────────────┐
-                       │  Express · Fetch diff        │
-                       │  Parse unified diff format   │
-                       └──────────────┬───────────────┘
-                                      │
-                                      ▼
-                       ┌──────────────────────────────┐
-                       │  Groq · Llama 3.3 70B        │
-                       │  Structured tool-calling     │
-                       │  → typed JSON per issue      │
-                       └──────────────┬───────────────┘
-                                      │
-                  ┌───────────────────┴───────────────────┐
-                  ▼                                       ▼
-   ┌──────────────────────────┐          ┌──────────────────────────┐
-   │  GitHub REST API         │          │  PostgreSQL (Neon)       │
-   │  Inline review comments  │          │  Org · repo · dev · PR   │
-   └──────────────────────────┘          └──────────────┬───────────┘
-                                                        │
-                                                        ▼
-                                         ┌──────────────────────────┐
-                                         │  GitHub Actions (Sunday) │
-                                         │  POST /digest/trigger    │
-                                         └──────────────┬───────────┘
-                                                        │
-                                                        ▼
-                                         ┌──────────────────────────┐
-                                         │  Aggregate issues (7d)   │
-                                         │  → HTML email (Resend)   │
-                                         │  (opt-in users only)     │
-                                         └──────────────────────────┘
+GitHub PR event
+        │
+        ▼
+GitHub webhook + HMAC-SHA256 verification
+        │
+        ▼
+Webhook processor
+  • action routing (review vs lifecycle-only)
+  • PR-head idempotency (repo + PR + headSha)
+        │
+        ▼
+Diff retrieval / parsing
+        │
+        ▼
+Groq structured analysis
+  (triage → chunked review → Zod-validated findings)
+        │
+        ├──────────────────────┐
+        ▼                      ▼
+GitHub review comments    PostgreSQL persistence
+                               │
+                               ▼
+                     Dashboard / Digest APIs
+                               │
+                               ▼
+                     Resend weekly email (opt-in)
 ```
 
-Webhooks hit the **API on Azure** directly. The **Vercel** frontend proxies `/api/v1/*` to the backend so session cookies stay same-origin.
+Webhooks target the **Azure API host** directly. The **Vercel** frontend proxies `/api/v1/*` to the backend so session cookies remain same-origin.
 
 ---
 
-## 🛠️ Tech stack
+## Engineering & reliability
 
-<table>
-<tr>
-<td valign="top" width="33%">
+### Installation authorization
+- Client-supplied `installation_id` values are not trusted alone.
+- The installation must belong to this GitHub App.
+- Personal installations must match the authenticated GitHub user.
+- Organization installations require active org membership, verified with a short OAuth flow (`read:org`) and signed OAuth `state`.
 
-**Backend**
-- Node.js · Express · TypeScript
-- Prisma ORM
-- PostgreSQL (Neon serverless)
-- Groq API (Llama 3.3 70B)
-- Octokit
-- Resend
-- Azure App Service
+### Webhook security & processing
+- HMAC-SHA256 signature verification on every delivery.
+- Review pipeline actions: `opened`, `synchronize`, `reopened`.
+- `closed` (including merges) updates lifecycle state without running another AI review.
 
-</td>
-<td valign="top" width="33%">
+### Review idempotency
+- Uses existing `PullRequest.headSha` as the success marker (written only after a successful review pipeline).
+- Logical key: **repository + PR number + head SHA**.
+- Duplicate delivery of an already processed SHA skips Groq, GitHub comments, and Issue inserts.
+- A new head SHA triggers a new review.
+- Failed runs do not mark the SHA as processed.
 
-**Frontend**
-- React · TanStack Router · TypeScript
-- Tailwind CSS
-- Recharts
-- Vercel
+### PR lifecycle
+- State is derived from the GitHub payload (`open` / `closed` / `merged` via `state`, `merged`, and `merged_at`).
+- Lifecycle updates are persisted for dashboard accuracy.
 
-</td>
-<td valign="top" width="33%">
+### Digest email HTML safety
+- Dynamic string values in digest HTML (`weekRange`, severity, category, file path) are escaped at the render boundary.
+- Attacker- or LLM-influenced file names cannot break out of HTML elements in the generated email.
+- This describes the implemented escaping for those interpolated strings—not a claim that every email path is broadly sanitized.
 
-**Infrastructure**
-- GitHub App (webhook + bot)
-- GitHub OAuth (sign-in + `user:email`)
-- GitHub Actions (weekly digest cron)
-- HMAC-SHA256 webhook verify
-
-</td>
-</tr>
-</table>
+### Multi-tenant isolation
+- Organizations, repositories, pull requests, and issues are scoped to the GitHub App installation associated with the signed-in user.
 
 ---
 
-## 📊 Dashboard vs repository views
+## Evaluation
+
+Offline benchmark under `server/eval/` (dataset + runner). Model used for reported results: **`openai/gpt-oss-120b`**.
+
+| Dataset property | Value |
+|---|---|
+| Labeled TypeScript diffs | 20 |
+| Known defects | 12 |
+| Clean cases | 8 |
+
+Reported **production** configuration = baseline + **first** evidence-based prompt refinement:
+
+| Stage | Recall | Precision | F1 | FP findings |
+|---|---:|---:|---:|---:|
+| Baseline | 100% | 30.0% | 46.2% | 28 |
+| Evidence-based prompt refinement | 100% | 46.2% | 63.2% | 14 |
+
+On that refined configuration: **TP = 12**, **FN = 0**. False-positive findings fell from **28 → 14** while recall stayed at **100%**.
+
+A second experimental prompt was tried and **reverted**; it is not the production system result and is not reported here as the final configuration.
+
+**Limitation:** This is a small labeled/synthetic TypeScript suite. It is useful for regression and prompt iteration, not statistically conclusive evidence of large-scale production performance.
+
+Reproduce (requires configured Groq API credentials):
+
+```bash
+cd server && npm run eval:offline
+```
+
+Generated reports `server/eval/results/latest.json` and `latest.md` are gitignored. See [`server/eval/README.md`](server/eval/README.md) for matching rules when the eval package is present.
+
+---
+
+## Tech stack
+
+| Layer | Technologies |
+|---|---|
+| Backend | TypeScript, Node.js, Express, Prisma, PostgreSQL (Neon), Groq, Octokit, Resend |
+| Frontend | TypeScript, React, TanStack Router, Tailwind CSS, Recharts |
+| Platform | GitHub App, GitHub OAuth, GitHub Actions, Azure App Service, Vercel |
+
+---
+
+## Product views
 
 | View | Scope |
-|------|--------|
-| **Dashboard** (`/dashboard`) | All repos under your GitHub App installation — combined stats and charts |
-| **Repositories** (`/repos/{owner}/{repo}`) | Single repo only — use the **Repository** dropdown to switch between connected repos |
-| **Developers** | Per-developer issue trends across all repos (28-day window) |
-| **Weekly digest** (`/digest`) | Email preview + **Get weekly email** opt-in toggle |
+|---|---|
+| **Dashboard** (`/dashboard`) | Installation-wide stats, recent reviews, connected repositories |
+| **Repositories** (`/repos/{owner}/{repo}`) | Single-repo health, severity trends, PR list |
+| **Developers** | Per-developer issue trends (recent window) |
+| **Weekly digest** (`/digest`) | Digest preview and email opt-in |
 
 ---
 
-## 🚀 Getting started
+## Getting started
 
 ### Prerequisites
 
-- **Node.js** 18+
-- **PostgreSQL** — [Neon](https://neon.tech) free tier works great
-- **GitHub App + OAuth App** — [setup docs](https://docs.github.com/en/apps/creating-github-apps)
-- **Groq API key** — [console.groq.com](https://console.groq.com)
-- **Resend API key** — [resend.com](https://resend.com) (for weekly digests)
+- Node.js 18+
+- PostgreSQL ([Neon](https://neon.tech) works well)
+- GitHub App + OAuth App ([GitHub Apps docs](https://docs.github.com/en/apps/creating-github-apps))
+- Groq API key ([console.groq.com](https://console.groq.com))
+- Resend API key ([resend.com](https://resend.com)) for weekly digests
 
-### 1 · Clone & install
+### 1. Clone & install
 
 ```bash
 git clone https://github.com/ahmadmustafa02/CodePulse
@@ -178,19 +214,19 @@ cd server && npm install
 cd ../web && npm install
 ```
 
-### 2 · Configure the server
+### 2. Configure & run the server
 
 ```bash
 cd server
 cp .env.example .env
-# Fill in your values (see env vars table below)
+# Fill in values from the environment tables below
 npx prisma migrate deploy
 npm run dev
 ```
 
-> API runs at `http://localhost:3001`
+API: `http://localhost:3001`
 
-### 3 · Configure the web app
+### 3. Configure & run the web app
 
 ```bash
 cd web
@@ -198,45 +234,48 @@ cp .env.example .env.local
 npm run dev
 ```
 
-> Dashboard runs at `http://localhost:8080`
+Dashboard: `http://localhost:8080`
 
-### 4 · GitHub setup
+### 4. GitHub App / OAuth setup
 
-|  | Local | Production |
+| Setting | Local | Production |
 |---|---|---|
-| **OAuth callback** | `http://localhost:3001/api/v1/auth/github/callback` | `https://getcodepulse.vercel.app/api/v1/auth/github/callback` (via Vercel proxy) or your API host |
-| **Webhook URL** | ngrok → `/api/v1/webhooks/github` | `https://your-api-host/api/v1/webhooks/github` |
-| **Webhook events** | Pull request | Pull request |
+| OAuth callback | `http://localhost:3001/api/v1/auth/github/callback` | `https://getcodepulse.vercel.app/api/v1/auth/github/callback` (Vercel proxy) or your API host |
+| Webhook URL | ngrok → `/api/v1/webhooks/github` | `https://your-api-host/api/v1/webhooks/github` |
+| Webhook events | Pull request | Pull request |
 
-**Minimum GitHub App permissions**
+Minimum GitHub App permissions:
 
 | Permission | Access |
 |---|---|
 | Repository metadata | Read |
 | Contents | Read |
-| Pull requests | **Read & write** |
+| Pull requests | Read & write |
 
-### 5 · Verify the PR review pipeline
+Post-install callback (production example):  
+`https://getcodepulse.vercel.app/api/v1/auth/installation/callback`
 
-1. Sign in with GitHub at `http://localhost:8080`
-2. Install the GitHub App on a test repository
-3. Confirm repos appear under **Connected repositories** on the dashboard
-4. Open a PR with a real code change (not just lockfiles)
-5. Watch for inline review comments within **1–3 minutes**
-6. Refresh the dashboard — the PR appears under **Recent reviews**
+### 5. Verify PR review locally
 
-> 💡 **Debugging:** GitHub → App → Advanced → Recent Deliveries — confirm `202` responses.
+1. Sign in at `http://localhost:8080`.
+2. Install the GitHub App on a test repository.
+3. Confirm repositories appear on the dashboard.
+4. Open a PR with a real code change (not only lockfiles).
+5. Expect inline review comments within a few minutes.
+6. Refresh the dashboard — the PR should appear under recent reviews.
 
-### 6 · Weekly digest (production)
+Debug deliveries: GitHub → App → Advanced → Recent Deliveries (look for accepted responses).
 
-1. Set server env: `RESEND_API_KEY`, `DIGEST_FROM_EMAIL`, `DIGEST_CRON_SECRET`
-2. Add GitHub repo secrets:
-   - `CODEPULSE_API_URL` — Azure API base URL, no trailing slash (e.g. `https://thecodepulse.azurewebsites.net`)
-   - `DIGEST_CRON_SECRET` — same value as server
-3. Workflow [`.github/workflows/weekly-digest.yml`](.github/workflows/weekly-digest.yml) runs **Sundays 09:00 UTC** (manual trigger available)
-4. Users enable email on **Weekly digest** page (`/digest`) — must be signed in so CodePulse has their GitHub email
+### 6. Weekly digest
 
-**Manual trigger (local or debug):**
+1. Set server env: `RESEND_API_KEY`, `DIGEST_FROM_EMAIL`, `DIGEST_CRON_SECRET`.
+2. Set repository secrets:
+   - `CODEPULSE_API_URL` — Azure API base URL, no trailing slash
+   - `DIGEST_CRON_SECRET` — same value as the server
+3. Workflow [`.github/workflows/weekly-digest.yml`](.github/workflows/weekly-digest.yml) runs Sundays **09:00 UTC** (manual trigger available).
+4. Users opt in on `/digest` after signing in (GitHub email required).
+
+Manual trigger:
 
 ```bash
 curl -X POST https://your-api-host/api/v1/digest/trigger \
@@ -245,9 +284,15 @@ curl -X POST https://your-api-host/api/v1/digest/trigger \
   -d "{}"
 ```
 
+### 7. Evaluation
+
+```bash
+cd server && npm run eval:offline
+```
+
 ---
 
-## 🔐 Environment variables
+## Environment variables
 
 <details>
 <summary><b>Server</b> · <code>server/.env</code></summary>
@@ -256,14 +301,14 @@ curl -X POST https://your-api-host/api/v1/digest/trigger \
 |---|---|
 | `DATABASE_URL` | Neon / PostgreSQL connection string |
 | `GITHUB_APP_ID` | GitHub App ID |
-| `GITHUB_PRIVATE_KEY` | App private key (PEM, `\n` escaped) |
+| `GITHUB_PRIVATE_KEY` | App private key (PEM; `\n` escaped in `.env`) |
 | `GITHUB_WEBHOOK_SECRET` | Webhook secret (min 20 chars) |
 | `GITHUB_OAUTH_CLIENT_ID` | OAuth App client ID |
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret |
-| `GITHUB_OAUTH_CALLBACK_URL` | Must match OAuth app settings exactly |
+| `GITHUB_OAUTH_CALLBACK_URL` | Must match OAuth app callback exactly |
 | `GROQ_API_KEY` | Groq API key |
 | `AUTH_SECRET` | Session JWT signing secret (min 32 chars) |
-| `WEB_APP_URL` | Frontend origin for CORS and redirects (`http://localhost:8080` locally) |
+| `WEB_APP_URL` | Frontend origin for CORS and redirects |
 | `RESEND_API_KEY` | Resend API key |
 | `DIGEST_FROM_EMAIL` | Sender address for digest emails |
 | `DIGEST_CRON_SECRET` | Protects `POST /api/v1/digest/trigger` (min 20 chars) |
@@ -275,7 +320,7 @@ curl -X POST https://your-api-host/api/v1/digest/trigger \
 
 | Variable | Description |
 |---|---|
-| `VITE_API_URL` | API base URL locally (`http://localhost:3001/api/v1`). Leave unset in production — app uses same-origin `/api/v1` via Vercel rewrites. |
+| `VITE_API_URL` | Local API base (`http://localhost:3001/api/v1`). Leave unset in production; the app uses same-origin `/api/v1` via Vercel rewrites. |
 
 </details>
 
@@ -291,72 +336,52 @@ curl -X POST https://your-api-host/api/v1/digest/trigger \
 
 ---
 
-## 📜 Scripts
+## Scripts
 
 ```bash
-# ── Server ────────────────────────────────
+# Server (from server/)
 npm run dev         # nodemon + ts-node
 npm run build       # compile TypeScript
 npm run start       # node dist/index.js
-npm run lint
 npm run typecheck
+npm run lint
+npm run eval:offline   # offline review benchmark
 
-# ── Web ───────────────────────────────────
-npm run dev         # Vite dev server (port 8080)
-npm run build       # production build
+# Web (from web/)
+npm run dev         # Vite (port 8080)
+npm run build
 npm run lint
 ```
 
 ---
 
-## Evaluation
-
-CodePulse includes a small offline review benchmark under `server/eval/`: **20 labeled TypeScript diffs** (12 with known defects, 8 clean).
-
-Verified results on this suite (model: `openai/gpt-oss-120b`):
-
-| Stage | Recall | Precision | F1 | FP findings |
-|---|---|---|---|---|
-| Baseline | 100% | 30.0% | 46.2% | 28 |
-| After first evidence-based prompt refinement | 100% | 46.2% | 63.2% | 14 |
-
-The production system prompt reflects that first refinement. A second experimental prompt was reverted and is not the reported system result.
-
-**Limitation:** This is a small, labeled/synthetic benchmark. It is useful for regression checks and prompt iteration, but should not be treated as a large-scale or statistically conclusive evaluation.
-
-Reproduce locally (requires a configured Groq API key):
-
-```bash
-cd server && npm run eval:offline
-```
-
-See [`server/eval/README.md`](server/eval/README.md) for matching rules and output paths. Generated `latest.json` / `latest.md` reports are gitignored.
-
----
-
-## ☁️ Deployment
+## Deployment
 
 | Layer | Host |
 |---|---|
-| Frontend | **Vercel** |
-| API | **Azure App Service** |
-| Database | **Neon PostgreSQL** |
-| Weekly digest cron | **GitHub Actions** ([`weekly-digest.yml`](.github/workflows/weekly-digest.yml)) |
+| Frontend | Vercel |
+| API | Azure App Service |
+| Database | Neon PostgreSQL |
+| Weekly digest cron | GitHub Actions ([`weekly-digest.yml`](.github/workflows/weekly-digest.yml)) |
 
-> ⚠️ Webhooks must point to the **API host directly** — never the Vercel frontend URL.
+GitHub webhooks must point to the **API host**, not the Vercel frontend URL.
+
+---
+
+## Limitations & future work
+
+- The offline evaluation set is small (20 labeled TypeScript diffs).
+- The benchmark focuses on TypeScript and issue *detection*, not large-scale developer acceptance of suggested fixes.
+- Broader real-world PR corpora, additional model comparisons, and fix-acceptance metrics are natural next research/engineering extensions.
+
+These are scope boundaries for the current system, not blockers for the production review pipeline described above.
 
 ---
 
 <div align="center">
 
-### Built for teams who want code review that compounds.
+**CodePulse** — structured AI review for GitHub, with persistence, security controls, and measurable evaluation.
 
-*Not another noisy bot.*
-
----
-
-⭐ **If CodePulse is useful to you, star the repo — it helps a lot.**
-
-[Live App](https://getcodepulse.vercel.app) · [Report a bug](https://github.com/ahmadmustafa02/CodePulse/issues) · [Request a feature](https://github.com/ahmadmustafa02/CodePulse/issues)
+[Live App](https://getcodepulse.vercel.app) · [Issues](https://github.com/ahmadmustafa02/CodePulse/issues) · [Repository](https://github.com/ahmadmustafa02/CodePulse)
 
 </div>
