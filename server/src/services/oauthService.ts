@@ -1,5 +1,6 @@
 /** GitHub OAuth: authorize URL and code exchange for user identity. */
 
+import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import logger from '../utils/logger';
 
@@ -7,6 +8,12 @@ const GITHUB_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const GITHUB_USER_URL = 'https://api.github.com/user';
 const GITHUB_USER_EMAILS_URL = 'https://api.github.com/user/emails';
+const GITHUB_USER_ORG_MEMBERSHIP_URL = 'https://api.github.com/user/memberships/orgs';
+
+const DEFAULT_OAUTH_SCOPES = ['read:user', 'user:email'] as const;
+const LINK_INSTALLATION_OAUTH_SCOPES = ['read:user', 'user:email', 'read:org'] as const;
+const LINK_INSTALLATION_STATE_PURPOSE = 'link_installation' as const;
+const LINK_INSTALLATION_STATE_TTL = '10m';
 
 export type GitHubOAuthProfile = {
   githubLogin: string;
@@ -15,13 +22,78 @@ export type GitHubOAuthProfile = {
   email: string | null;
 };
 
-export function buildGitHubAuthorizeUrl(): string {
+export type LinkInstallationOAuthState = {
+  purpose: typeof LINK_INSTALLATION_STATE_PURPOSE;
+  installationId: number;
+  githubUserId: string;
+};
+
+export function buildGitHubAuthorizeUrl(options?: {
+  state?: string;
+  scopes?: readonly string[];
+}): string {
   const params = new URLSearchParams({
     client_id: env.GITHUB_OAUTH_CLIENT_ID,
     redirect_uri: env.GITHUB_OAUTH_CALLBACK_URL,
-    scope: 'read:user user:email',
+    scope: (options?.scopes ?? DEFAULT_OAUTH_SCOPES).join(' '),
   });
+  if (options?.state) {
+    params.set('state', options.state);
+  }
   return `${GITHUB_AUTHORIZE_URL}?${params.toString()}`;
+}
+
+export function buildLinkInstallationAuthorizeUrl(params: {
+  installationId: number;
+  githubUserId: string;
+}): string {
+  const state = signLinkInstallationState({
+    installationId: params.installationId,
+    githubUserId: params.githubUserId,
+  });
+  return buildGitHubAuthorizeUrl({
+    state,
+    scopes: LINK_INSTALLATION_OAUTH_SCOPES,
+  });
+}
+
+export function signLinkInstallationState(params: {
+  installationId: number;
+  githubUserId: string;
+}): string {
+  const payload: LinkInstallationOAuthState = {
+    purpose: LINK_INSTALLATION_STATE_PURPOSE,
+    installationId: params.installationId,
+    githubUserId: params.githubUserId,
+  };
+  return jwt.sign(payload, env.AUTH_SECRET, { expiresIn: LINK_INSTALLATION_STATE_TTL });
+}
+
+export function parseLinkInstallationState(state: string): LinkInstallationOAuthState | null {
+  try {
+    const payload = jwt.verify(state, env.AUTH_SECRET) as jwt.JwtPayload;
+    if (payload.purpose !== LINK_INSTALLATION_STATE_PURPOSE) {
+      return null;
+    }
+    const installationId = Number(payload.installationId);
+    const githubUserId =
+      typeof payload.githubUserId === 'string' ? payload.githubUserId : null;
+    if (
+      !githubUserId ||
+      !Number.isFinite(installationId) ||
+      installationId <= 0 ||
+      !/^\d+$/.test(githubUserId)
+    ) {
+      return null;
+    }
+    return {
+      purpose: LINK_INSTALLATION_STATE_PURPOSE,
+      installationId,
+      githubUserId,
+    };
+  } catch {
+    return null;
+  }
 }
 
 type GitHubEmailEntry = {
@@ -57,7 +129,42 @@ async function fetchPrimaryEmail(accessToken: string): Promise<string | null> {
   return emails[0]?.email ?? null;
 }
 
-export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthProfile> {
+/** Returns whether the token owner is an active member of `orgLogin`. Does not expose org details. */
+export async function isActiveOrgMember(
+  accessToken: string,
+  orgLogin: string,
+): Promise<boolean> {
+  if (!orgLogin || orgLogin === 'unknown') {
+    return false;
+  }
+
+  const res = await fetch(
+    `${GITHUB_USER_ORG_MEMBERSHIP_URL}/${encodeURIComponent(orgLogin)}`,
+    {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (res.status === 404 || res.status === 403) {
+    return false;
+  }
+
+  if (!res.ok) {
+    logger.warn('GitHub org membership check failed', { status: res.status });
+    return false;
+  }
+
+  const body = (await res.json()) as { state?: string };
+  return body.state === 'active';
+}
+
+export async function exchangeCodeForProfileAndToken(code: string): Promise<{
+  profile: GitHubOAuthProfile;
+  accessToken: string;
+}> {
   const tokenRes = await fetch(GITHUB_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -80,10 +187,12 @@ export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthP
     throw new Error(tokenJson.error ?? 'GitHub token exchange returned no access_token');
   }
 
+  const accessToken = tokenJson.access_token;
+
   const userRes = await fetch(GITHUB_USER_URL, {
     headers: {
       Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${tokenJson.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
     },
   });
 
@@ -100,7 +209,7 @@ export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthP
 
   let email = user.email?.trim() || null;
   if (!email) {
-    email = await fetchPrimaryEmail(tokenJson.access_token);
+    email = await fetchPrimaryEmail(accessToken);
   }
 
   if (!email) {
@@ -110,9 +219,17 @@ export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthP
   }
 
   return {
-    githubLogin: user.login,
-    githubUserId: BigInt(user.id),
-    avatarUrl: user.avatar_url ?? null,
-    email,
+    accessToken,
+    profile: {
+      githubLogin: user.login,
+      githubUserId: BigInt(user.id),
+      avatarUrl: user.avatar_url ?? null,
+      email,
+    },
   };
+}
+
+export async function exchangeCodeForProfile(code: string): Promise<GitHubOAuthProfile> {
+  const { profile } = await exchangeCodeForProfileAndToken(code);
+  return profile;
 }

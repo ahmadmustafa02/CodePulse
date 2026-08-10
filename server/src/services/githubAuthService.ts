@@ -32,14 +32,33 @@ export class GitHubAuthService {
   }
 
   async getInstallationAccountLogin(installationId: number): Promise<string> {
+    const target = await this.getInstallationTarget(installationId);
+    return target.accountLogin;
+  }
+
+  /**
+   * Returns the account this App installation is on (via App JWT).
+   * Proves the installation belongs to this App; does not prove end-user access.
+   */
+  async getInstallationTarget(installationId: number): Promise<{
+    targetType: string;
+    accountId: number;
+    accountLogin: string;
+  }> {
     const { data } = await this.appOctokit().rest.apps.getInstallation({
       installation_id: installationId,
     });
     const account = data.account;
-    if (account && 'login' in account && typeof account.login === 'string') {
-      return account.login;
+    if (!account || !('id' in account) || typeof account.id !== 'number') {
+      throw new Error(`GitHub installation ${installationId} has no account`);
     }
-    return 'unknown';
+    const accountLogin =
+      'login' in account && typeof account.login === 'string' ? account.login : 'unknown';
+    return {
+      targetType: data.target_type,
+      accountId: account.id,
+      accountLogin,
+    };
   }
 
   async listAccessibleRepositories(installationId: number): Promise<GitHubAccessibleRepository[]> {
