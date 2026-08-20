@@ -1,0 +1,19 @@
+diff --git a/src/files/safeAvatar.ts b/src/files/safeAvatar.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/files/safeAvatar.ts
+@@ -0,0 +1,12 @@
++import fs from 'fs/promises';
++import path from 'path';
++
++const UPLOADS = '/var/app/uploads';
++
++export async function readAvatar(fileName: string) {
++  const base = path.basename(fileName);
++  const target = path.join(UPLOADS, base);
++  if (!target.startsWith(UPLOADS)) {
++    throw new Error('invalid path');
++  }
++  return fs.readFile(target);
++}

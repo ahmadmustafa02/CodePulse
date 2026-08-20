@@ -25,6 +25,7 @@ import {
   formatDiffForPrompt,
   getReviewableFiles,
 } from '../utils/diffFormatter';
+import type { PipelineTracer } from './traceService';
 import logger from '../utils/logger';
 
 const ISSUE_CATEGORIES = [
@@ -121,14 +122,16 @@ const SYSTEM_PROMPT = `You are an expert code reviewer with deep knowledge of Ty
 
 You are reviewing a pull request diff. Your job is to identify REAL, SIGNIFICANT code issues — not style nitpicks.
 
+Report only concrete, actionable defects that are supported by evidence in the provided diff/context. Prioritize material correctness, security, reliability, and meaningful performance problems. Every reported issue must be explainable directly from the provided diff/context. If you are uncertain whether something is a real defect, do not report it.
+
 WHAT TO FLAG:
-- Security vulnerabilities (SQL injection, XSS, missing auth checks, exposed secrets, unsafe deserialization)
-- Unhandled promise rejections or missing error handling
+- Security vulnerabilities with clear evidence in the diff (SQL injection, XSS, command injection, exposed secrets, unsafe deserialization, missing auth checks when the code path clearly enforces or bypasses authorization)
+- Concrete failure-handling bugs (e.g. swallowed errors that hide failure, missing await that returns a Promise where a value is required, unhandled rejections created by the added code itself)
 - Logic errors that would cause bugs at runtime
-- Performance issues (N+1 queries, blocking operations, memory leaks)
-- Type safety violations (unsafe casts, missing null checks, any types)
-- Missing input validation on user-supplied data
-- Race conditions or concurrency issues
+- Meaningful performance problems (e.g. N+1 queries, clearly expensive blocking work, obvious memory leaks)
+- Type safety defects that can cause real runtime failures (e.g. unchecked any that drops required fields, null/undefined dereference)
+- Missing input validation only when the diff shows untrusted input reaching a dangerous sink or violating an important invariant/security boundary
+- Race conditions or concurrency issues with clear evidence
 
 WHAT TO IGNORE:
 - Code style preferences (formatting, naming conventions)
@@ -136,13 +139,20 @@ WHAT TO IGNORE:
 - Comments or documentation
 - Lines you cannot see (only review what is in the diff)
 - Deleted lines (lines starting with -)
+- Speculative security claims when the vulnerable behavior is not demonstrated (e.g. assumed SSRF on a fixed trusted URL, assumed email header injection, assumed privilege escalation without an authz bypass in the diff)
+- Normal TypeScript patterns and harmless casts that do not create a concrete defect
+- Requiring try/catch merely because a function can throw or a Promise can reject; error propagation to the caller is valid unless the added code creates a concrete failure-handling bug
+- Defensive validation / "validate everything" suggestions without evidence that the input can actually violate an important invariant or security boundary
+- Micro-optimizations or resource-reuse nits without meaningful performance impact
 
 RULES:
 - Only report issues on ADDED lines (Line N: + ...) 
 - Be precise: reference the exact line number and filename from the diff
 - Maximum ${MAX_ISSUES_PER_PR} issues total — prioritize by severity
+- Multiple findings are allowed when they are genuinely independent and materially actionable; do not invent adjacent nits around a real bug
 - If the code looks correct and safe, return an empty issues array
-- Do not invent issues that aren't clearly present in the code`;
+- Do not invent issues that aren't clearly present in the code
+- When uncertain, omit the finding`;
 
 const TRIAGE_SYSTEM_PROMPT =
   'You are a code review triage assistant. Return only a valid JSON array of filenames, nothing else.';
@@ -187,7 +197,10 @@ function sortBySeverity(issues: DetectedIssue[]): DetectedIssue[] {
   );
 }
 
-function buildEmptyResult(parsedDiff: ParsedDiff): AnalysisResult {
+function buildEmptyResult(
+  parsedDiff: ParsedDiff,
+  opts?: { analysisIncomplete?: boolean; chunksAttempted?: number; chunksFailed?: number },
+): AnalysisResult {
   return {
     prNumber: parsedDiff.prNumber,
     repo: parsedDiff.repo,
@@ -197,6 +210,9 @@ function buildEmptyResult(parsedDiff: ParsedDiff): AnalysisResult {
     analyzedAt: new Date().toISOString(),
     modelUsed: GROQ_MODEL,
     tokensUsed: 0,
+    chunksAttempted: opts?.chunksAttempted ?? 0,
+    chunksFailed: opts?.chunksFailed ?? 0,
+    analysisIncomplete: opts?.analysisIncomplete ?? false,
   };
 }
 
@@ -338,6 +354,32 @@ function dedupeIssues(issues: DetectedIssue[]): DetectedIssue[] {
   return result;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const msg = errorMessage(error);
+  return msg.includes('429') || msg.includes('rate_limit');
+}
+
+function rateLimitWaitMs(error: unknown, attempt: number): number {
+  const msg = errorMessage(error);
+  // Groq: "Please try again in 22m17.472s" or "try again in 12.5s"
+  const withMinutes = /try again in (?:(\d+)m)?([\d.]+)s/i.exec(msg);
+  if (withMinutes) {
+    const minutes = withMinutes[1] ? Number(withMinutes[1]) : 0;
+    const seconds = Number(withMinutes[2]);
+    const ms = Math.ceil((minutes * 60 + seconds) * 1000) + 2000;
+    return Math.min(Math.max(ms, 5000), 45 * 60 * 1000);
+  }
+  return Math.min(1000 * 2 ** attempt, 60_000);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class GroqAnalysisService {
   private readonly groq: Groq;
 
@@ -350,6 +392,7 @@ export class GroqAnalysisService {
     prTitle: string;
     prDescription: string;
     files: TriageFileInput[];
+    model: string;
   }): Promise<string[]> {
     if (params.files.length === 0) {
       return [];
@@ -363,7 +406,7 @@ export class GroqAnalysisService {
 
     try {
       const response = await this.groq.chat.completions.create({
-        model: GROQ_MODEL,
+        model: params.model,
         max_tokens: TRIAGE_MAX_COMPLETION_TOKENS,
         messages: [
           { role: 'system', content: TRIAGE_SYSTEM_PROMPT },
@@ -417,10 +460,49 @@ export class GroqAnalysisService {
   private async analyzeChunk(
     formattedChunk: string,
     parsedDiff: ParsedDiff,
+    model: string,
+    opts?: { maxCompletionTokens?: number; abortOnRateLimit?: boolean },
+  ): Promise<{ issues: DetectedIssue[]; tokensUsed: number }> {
+    const maxAttempts = opts?.abortOnRateLimit ? 1 : 4;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.analyzeChunkOnce(formattedChunk, parsedDiff, model, opts?.maxCompletionTokens);
+      } catch (error) {
+        lastError = error;
+        if (opts?.abortOnRateLimit && isRateLimitError(error)) {
+          throw error;
+        }
+        if (!isRateLimitError(error) || attempt === maxAttempts) {
+          throw error;
+        }
+        const waitMs = rateLimitWaitMs(error, attempt);
+        logger.warn('Groq rate limit; backing off before retry', {
+          attempt,
+          maxAttempts,
+          waitMs,
+          waitMinutes: Math.round(waitMs / 60000),
+          repo: parsedDiff.repo,
+          prNumber: parsedDiff.prNumber,
+          model,
+        });
+        await sleep(waitMs);
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  private async analyzeChunkOnce(
+    formattedChunk: string,
+    parsedDiff: ParsedDiff,
+    model: string,
+    maxCompletionTokens?: number,
   ): Promise<{ issues: DetectedIssue[]; tokensUsed: number }> {
     const response = await this.groq.chat.completions.create({
-      model: GROQ_MODEL,
-      max_tokens: GROQ_MAX_COMPLETION_TOKENS,
+      model,
+      max_tokens: maxCompletionTokens ?? GROQ_MAX_COMPLETION_TOKENS,
       tools: [codeReviewTool],
       tool_choice: { type: 'function', function: { name: GROQ_TOOL_NAME } },
       messages: [
@@ -460,7 +542,7 @@ export class GroqAnalysisService {
     }
 
     const issues = validated.data.issues
-      .map((raw) => mapRawIssue(raw))
+      .map(mapRawIssue)
       .filter((issue): issue is DetectedIssue => issue !== null);
 
     return {
@@ -469,7 +551,24 @@ export class GroqAnalysisService {
     };
   }
 
-  async analyzeDiff(parsedDiff: ParsedDiff): Promise<AnalysisResult> {
+  async analyzeDiff(
+    parsedDiff: ParsedDiff,
+    tracer?: PipelineTracer,
+    options?: {
+      model?: string;
+      /** Eval-only override; production leaves this unset (uses GROQ_MAX_COMPLETION_TOKENS). */
+      maxCompletionTokens?: number;
+      /** Eval: throw immediately on 429 instead of long backoff. */
+      abortOnRateLimit?: boolean;
+    },
+  ): Promise<AnalysisResult> {
+    const model = options?.model?.trim() || GROQ_MODEL;
+    const run = <T>(
+      step: string,
+      fn: () => Promise<T>,
+      metadata?: Record<string, unknown>,
+    ): Promise<T> => (tracer ? tracer.run(step, fn, metadata) : fn());
+
     try {
       const reviewableFiles = getReviewableFiles(parsedDiff);
 
@@ -478,19 +577,22 @@ export class GroqAnalysisService {
           repo: parsedDiff.repo,
           prNumber: parsedDiff.prNumber,
         });
-        return buildEmptyResult(parsedDiff);
+        return { ...buildEmptyResult(parsedDiff), modelUsed: model };
       }
 
-      const prioritizedFilenames = await this.triageFiles({
-        prTitle: parsedDiff.prTitle,
-        prDescription: parsedDiff.prDescription,
-        files: reviewableFiles.map((f) => ({
-          filename: f.filename,
-          additions: f.additions,
-          deletions: f.deletions,
-          status: f.status,
-        })),
-      });
+      const prioritizedFilenames = await run('triage', () =>
+        this.triageFiles({
+          prTitle: parsedDiff.prTitle,
+          prDescription: parsedDiff.prDescription,
+          files: reviewableFiles.map((f) => ({
+            filename: f.filename,
+            additions: f.additions,
+            deletions: f.deletions,
+            status: f.status,
+          })),
+          model,
+        }),
+      );
 
       logger.info('Two-pass review started', {
         totalFiles: parsedDiff.files.length,
@@ -509,7 +611,7 @@ export class GroqAnalysisService {
           prNumber: parsedDiff.prNumber,
           reviewableLines,
         });
-        return buildEmptyResult(parsedDiff);
+        return { ...buildEmptyResult(parsedDiff), modelUsed: model };
       }
 
       const chunks =
@@ -519,12 +621,19 @@ export class GroqAnalysisService {
 
       const allIssues: DetectedIssue[] = [];
       let tokensUsed = 0;
+      let chunksFailed = 0;
+      let rateLimited = false;
 
       for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
         try {
-          const { issues, tokensUsed: chunkTokens } = await this.analyzeChunk(
-            chunks[chunkIndex],
-            parsedDiff,
+          const { issues, tokensUsed: chunkTokens } = await run(
+            `chunk_${chunkIndex}_analysis`,
+            () =>
+              this.analyzeChunk(chunks[chunkIndex], parsedDiff, model, {
+                maxCompletionTokens: options?.maxCompletionTokens,
+                abortOnRateLimit: options?.abortOnRateLimit,
+              }),
+            { chunkIndex, totalChunks: chunks.length },
           );
           tokensUsed += chunkTokens;
           allIssues.push(...issues);
@@ -537,6 +646,26 @@ export class GroqAnalysisService {
             prNumber: parsedDiff.prNumber,
           });
         } catch (chunkError) {
+          chunksFailed += 1;
+          if (isRateLimitError(chunkError)) {
+            rateLimited = true;
+            if (options?.abortOnRateLimit) {
+              return {
+                prNumber: parsedDiff.prNumber,
+                repo: parsedDiff.repo,
+                headSha: parsedDiff.headSha,
+                issues: [],
+                filesAnalyzed: filesToReview.length,
+                analyzedAt: new Date().toISOString(),
+                modelUsed: model,
+                tokensUsed,
+                chunksAttempted: chunks.length,
+                chunksFailed,
+                analysisIncomplete: true,
+                rateLimited: true,
+              };
+            }
+          }
           logger.error('Chunk analysis failed', {
             chunkIndex,
             totalChunks: chunks.length,
@@ -550,10 +679,15 @@ export class GroqAnalysisService {
 
       const deduped = dedupeIssues(allIssues);
       const cappedIssues = sortBySeverity(deduped).slice(0, MAX_ISSUES_PER_PR);
+      const analysisIncomplete = chunksFailed > 0;
 
       logger.info('Final merged results', {
         totalIssues: allIssues.length,
         afterDedup: deduped.length,
+        chunksAttempted: chunks.length,
+        chunksFailed,
+        analysisIncomplete,
+        rateLimited,
         repo: parsedDiff.repo,
         prNumber: parsedDiff.prNumber,
       });
@@ -563,8 +697,11 @@ export class GroqAnalysisService {
         prNumber: parsedDiff.prNumber,
         issueCount: cappedIssues.length,
         tokensUsed,
-        model: GROQ_MODEL,
+        model,
         chunksAnalyzed: chunks.length,
+        chunksFailed,
+        analysisIncomplete,
+        rateLimited,
       });
 
       return {
@@ -574,8 +711,12 @@ export class GroqAnalysisService {
         issues: cappedIssues,
         filesAnalyzed: filesToReview.length,
         analyzedAt: new Date().toISOString(),
-        modelUsed: GROQ_MODEL,
+        modelUsed: model,
         tokensUsed,
+        chunksAttempted: chunks.length,
+        chunksFailed,
+        analysisIncomplete,
+        rateLimited,
       };
     } catch (error) {
       logger.error('Groq analysis failed', {
@@ -584,7 +725,14 @@ export class GroqAnalysisService {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
-      return buildEmptyResult(parsedDiff);
+      return {
+        ...buildEmptyResult(parsedDiff, {
+          analysisIncomplete: true,
+          chunksAttempted: 0,
+          chunksFailed: 1,
+        }),
+        modelUsed: model,
+      };
     }
   }
 }

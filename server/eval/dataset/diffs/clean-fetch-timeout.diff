@@ -1,0 +1,18 @@
+diff --git a/src/partners/safeInventory.ts b/src/partners/safeInventory.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/partners/safeInventory.ts
+@@ -0,0 +1,10 @@
++export async function checkStock(sku: string) {
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), 3000);
++  try {
++    const response = await fetch(`https://partner.example/stock/${sku}`, {
++      signal: controller.signal,
++    });
++    return response.json();
++  } finally {
++    clearTimeout(timer);
++  }
++}

@@ -1,0 +1,934 @@
+{
+  "version": "2.0.0",
+  "cases": [
+    {
+      "id": "sec-sql-injection",
+      "language": "typescript",
+      "prTitle": "Add user lookup helpers",
+      "prDescription": "Fetch users by id and role for the admin panel.",
+      "diffPath": "diffs/sec-sql-injection.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "sqli",
+          "file": "src/users/lookup.ts",
+          "line": 7,
+          "lineTolerance": 1,
+          "category": "security",
+          "severityMin": "high",
+          "keywords": [
+            "sql",
+            "injection",
+            "concatenat",
+            "interpolat",
+            "unsanitiz"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-eval-injection",
+      "language": "typescript",
+      "prTitle": "Parse remote feature config",
+      "prDescription": "Load operator-provided config payloads.",
+      "diffPath": "diffs/sec-eval-injection.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "eval",
+          "file": "src/config/loader.ts",
+          "line": 8,
+          "lineTolerance": 1,
+          "category": "security",
+          "severityMin": "critical",
+          "keywords": [
+            "eval",
+            "injection",
+            "code execution",
+            "arbitrary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-hardcoded-secret",
+      "language": "typescript",
+      "prTitle": "Wire Stripe checkout",
+      "prDescription": "Create checkout sessions for paid plans.",
+      "diffPath": "diffs/sec-hardcoded-secret.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "secret",
+          "file": "src/payments/stripeClient.ts",
+          "line": 4,
+          "lineTolerance": 1,
+          "category": "security",
+          "severityMin": "critical",
+          "keywords": [
+            "secret",
+            "api key",
+            "hardcoded",
+            "credential",
+            "sk_live"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-xss-render",
+      "language": "typescript",
+      "prTitle": "Render rich comment bodies",
+      "prDescription": "Support HTML comments from the editor.",
+      "diffPath": "diffs/sec-xss-render.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "xss",
+          "file": "src/ui/comment.tsx",
+          "line": 14,
+          "lineTolerance": 2,
+          "category": "security",
+          "severityMin": "high",
+          "keywords": [
+            "xss",
+            "html",
+            "dangerously",
+            "sanitize",
+            "cross-site"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-command-injection",
+      "language": "typescript",
+      "prTitle": "Generate image thumbnails",
+      "prDescription": "Resize uploads with ImageMagick convert.",
+      "diffPath": "diffs/sec-command-injection.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "cmdi",
+          "file": "src/jobs/thumbnail.ts",
+          "line": 8,
+          "lineTolerance": 1,
+          "category": "security",
+          "severityMin": "critical",
+          "keywords": [
+            "command",
+            "injection",
+            "shell",
+            "exec",
+            "interpolat"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "err-missing-await",
+      "language": "typescript",
+      "prTitle": "Fetch user profiles",
+      "prDescription": "Load display names from the profile API.",
+      "diffPath": "diffs/err-missing-await.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "await",
+          "file": "src/api/profile.ts",
+          "line": 9,
+          "lineTolerance": 1,
+          "category": "error-handling",
+          "severityMin": "medium",
+          "keywords": [
+            "await",
+            "promise",
+            "json",
+            "unhandled"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "err-swallowed-error",
+      "language": "typescript",
+      "prTitle": "Email invoices to customers",
+      "prDescription": "Send PDF invoices after payment.",
+      "diffPath": "diffs/err-swallowed-error.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "swallow",
+          "file": "src/billing/invoice.ts",
+          "line": 13,
+          "lineTolerance": 2,
+          "category": "error-handling",
+          "severityMin": "medium",
+          "keywords": [
+            "swallow",
+            "catch",
+            "error",
+            "ignored",
+            "silent",
+            "return true"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "logic-null-check",
+      "language": "typescript",
+      "prTitle": "Apply cart coupons",
+      "prDescription": "Discount subtotals when a coupon is present.",
+      "diffPath": "diffs/logic-null-check.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "null",
+          "file": "src/cart/discount.ts",
+          "line": 6,
+          "lineTolerance": 1,
+          "category": "logic",
+          "severityMin": "medium",
+          "keywords": [
+            "null",
+            "undefined",
+            "optional",
+            "coupon",
+            "truthy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "logic-off-by-one",
+      "language": "typescript",
+      "prTitle": "Fix pagination helper",
+      "prDescription": "Slice items for page views.",
+      "diffPath": "diffs/logic-off-by-one.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "obo",
+          "file": "src/pagination/slice.ts",
+          "line": 8,
+          "lineTolerance": 1,
+          "category": "logic",
+          "severityMin": "medium",
+          "keywords": [
+            "off-by-one",
+            "slice",
+            "page",
+            "end",
+            "exclusive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perf-n-plus-one",
+      "language": "typescript",
+      "prTitle": "Author post count report",
+      "prDescription": "Aggregate post counts for authors.",
+      "diffPath": "diffs/perf-n-plus-one.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "n1",
+          "file": "src/reports/authorStats.ts",
+          "line": 9,
+          "lineTolerance": 2,
+          "category": "performance",
+          "severityMin": "medium",
+          "keywords": [
+            "n+1",
+            "loop",
+            "query",
+            "performance",
+            "batch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cq-any-cast",
+      "language": "typescript",
+      "prTitle": "Read session payload",
+      "prDescription": "Hydrate session user from cookie payload.",
+      "diffPath": "diffs/cq-any-cast.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "any",
+          "file": "src/auth/session.ts",
+          "line": 8,
+          "lineTolerance": 1,
+          "category": "type-safety",
+          "severityMin": "low",
+          "keywords": [
+            "any",
+            "cast",
+            "type",
+            "unsafe",
+            "unchecked"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bp-missing-validation",
+      "language": "typescript",
+      "prTitle": "Create order endpoint",
+      "prDescription": "Accept order payloads from the storefront.",
+      "diffPath": "diffs/bp-missing-validation.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "validate",
+          "file": "src/http/createOrder.ts",
+          "line": 9,
+          "lineTolerance": 2,
+          "category": "best-practices",
+          "severityMin": "medium",
+          "keywords": [
+            "validat",
+            "input",
+            "quantity",
+            "sanitiz",
+            "check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clean-parameterized-sql",
+      "language": "typescript",
+      "prTitle": "Safe user lookup",
+      "prDescription": "Parameterized queries for user reads.",
+      "diffPath": "diffs/clean-parameterized-sql.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-json-parse",
+      "language": "typescript",
+      "prTitle": "Safe config parser",
+      "prDescription": "Parse remote config with JSON.parse.",
+      "diffPath": "diffs/clean-json-parse.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-env-secret",
+      "language": "typescript",
+      "prTitle": "Stripe client from env",
+      "prDescription": "Load Stripe key from environment.",
+      "diffPath": "diffs/clean-env-secret.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-escaped-html",
+      "language": "typescript",
+      "prTitle": "Plain-text comments",
+      "prDescription": "Render comment bodies as text nodes.",
+      "diffPath": "diffs/clean-escaped-html.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-await-json",
+      "language": "typescript",
+      "prTitle": "Awaited profile fetch",
+      "prDescription": "Correctly await response.json().",
+      "diffPath": "diffs/clean-await-json.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-error-propagate",
+      "language": "typescript",
+      "prTitle": "Invoice email errors",
+      "prDescription": "Return false when mail send fails.",
+      "diffPath": "diffs/clean-error-propagate.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-null-guard",
+      "language": "typescript",
+      "prTitle": "Guarded coupon apply",
+      "prDescription": "Null-check coupons before use.",
+      "diffPath": "diffs/clean-null-guard.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-batch-query",
+      "language": "typescript",
+      "prTitle": "Batched author stats",
+      "prDescription": "Single grouped query for post counts.",
+      "diffPath": "diffs/clean-batch-query.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "sec-path-traversal",
+      "language": "typescript",
+      "prTitle": "Serve user avatars from disk",
+      "prDescription": "Read avatar files by name from uploads.",
+      "diffPath": "diffs/sec-path-traversal.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "traversal",
+          "file": "src/files/avatar.ts",
+          "line": 8,
+          "lineTolerance": 2,
+          "category": "security",
+          "severityMin": "high",
+          "keywords": [
+            "path",
+            "traversal",
+            "..",
+            "join",
+            "unsanitiz"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-ssrf",
+      "language": "typescript",
+      "prTitle": "Fetch remote preview images",
+      "prDescription": "Proxy image URLs for the editor.",
+      "diffPath": "diffs/sec-ssrf.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "ssrf",
+          "file": "src/http/preview.ts",
+          "line": 6,
+          "lineTolerance": 2,
+          "category": "security",
+          "severityMin": "high",
+          "keywords": [
+            "ssrf",
+            "fetch",
+            "url",
+            "internal",
+            "untrusted"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-insecure-random",
+      "language": "typescript",
+      "prTitle": "Generate password reset tokens",
+      "prDescription": "Create reset tokens for email links.",
+      "diffPath": "diffs/sec-insecure-random.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "random",
+          "file": "src/auth/resetToken.ts",
+          "line": 4,
+          "lineTolerance": 2,
+          "category": "security",
+          "severityMin": "high",
+          "keywords": [
+            "random",
+            "math.random",
+            "predictable",
+            "token",
+            "crypto"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-open-redirect",
+      "language": "typescript",
+      "prTitle": "Post-login redirect helper",
+      "prDescription": "Send users back to the page they requested.",
+      "diffPath": "diffs/sec-open-redirect.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "redirect",
+          "file": "src/auth/redirect.ts",
+          "line": 3,
+          "lineTolerance": 2,
+          "category": "security",
+          "severityMin": "medium",
+          "keywords": [
+            "redirect",
+            "open",
+            "unvalidated",
+            "url",
+            "next"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "err-empty-catch",
+      "language": "typescript",
+      "prTitle": "Persist analytics events",
+      "prDescription": "Fire-and-forget analytics writes.",
+      "diffPath": "diffs/err-empty-catch.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "empty-catch",
+          "file": "src/analytics/track.ts",
+          "line": 8,
+          "lineTolerance": 2,
+          "category": "error-handling",
+          "severityMin": "medium",
+          "keywords": [
+            "catch",
+            "empty",
+            "swallow",
+            "ignore",
+            "silent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "err-unhandled-rejection",
+      "language": "typescript",
+      "prTitle": "Warm cache on boot",
+      "prDescription": "Prefetch hot keys without blocking startup.",
+      "diffPath": "diffs/err-unhandled-rejection.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "unhandled",
+          "file": "src/cache/warm.ts",
+          "line": 6,
+          "lineTolerance": 2,
+          "category": "error-handling",
+          "severityMin": "medium",
+          "keywords": [
+            "promise",
+            "await",
+            "unhandled",
+            "rejection",
+            "catch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "logic-loose-equality",
+      "language": "typescript",
+      "prTitle": "Admin role gate",
+      "prDescription": "Restrict destructive actions to admins.",
+      "diffPath": "diffs/logic-loose-equality.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "eqeq",
+          "file": "src/auth/isAdmin.ts",
+          "line": 3,
+          "lineTolerance": 1,
+          "category": "logic",
+          "severityMin": "medium",
+          "keywords": [
+            "==",
+            "equality",
+            "loose",
+            "===",
+            "coercion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "logic-shared-mutation",
+      "language": "typescript",
+      "prTitle": "Default filter options",
+      "prDescription": "Shared defaults for list endpoints.",
+      "diffPath": "diffs/logic-shared-mutation.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "mutate",
+          "file": "src/filters/defaults.ts",
+          "line": 6,
+          "lineTolerance": 2,
+          "category": "logic",
+          "severityMin": "medium",
+          "keywords": [
+            "mutat",
+            "shared",
+            "default",
+            "push",
+            "reuse"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perf-sync-fs",
+      "language": "typescript",
+      "prTitle": "Load theme CSS in request path",
+      "prDescription": "Serve theme files per request.",
+      "diffPath": "diffs/perf-sync-fs.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "syncfs",
+          "file": "src/http/theme.ts",
+          "line": 5,
+          "lineTolerance": 2,
+          "category": "performance",
+          "severityMin": "medium",
+          "keywords": [
+            "sync",
+            "readFileSync",
+            "blocking",
+            "fs",
+            "request"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perf-unbounded-array",
+      "language": "typescript",
+      "prTitle": "Collect all audit events",
+      "prDescription": "Buffer events before flush.",
+      "diffPath": "diffs/perf-unbounded-array.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "unbounded",
+          "file": "src/audit/buffer.ts",
+          "line": 6,
+          "lineTolerance": 2,
+          "category": "performance",
+          "severityMin": "medium",
+          "keywords": [
+            "unbounded",
+            "memory",
+            "push",
+            "grow",
+            "limit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cq-deep-nesting",
+      "language": "typescript",
+      "prTitle": "Nested order status mapper",
+      "prDescription": "Map provider statuses to internal enums.",
+      "diffPath": "diffs/cq-deep-nesting.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "nest",
+          "file": "src/orders/mapStatus.ts",
+          "line": 4,
+          "lineTolerance": 3,
+          "category": "code-quality",
+          "severityMin": "low",
+          "keywords": [
+            "nest",
+            "complex",
+            "readable",
+            "refactor",
+            "if"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cq-magic-string",
+      "language": "typescript",
+      "prTitle": "Feature flag string compare",
+      "prDescription": "Gate beta UI behind a flag name.",
+      "diffPath": "diffs/cq-magic-string.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "magic",
+          "file": "src/flags/beta.ts",
+          "line": 2,
+          "lineTolerance": 2,
+          "category": "code-quality",
+          "severityMin": "low",
+          "keywords": [
+            "magic",
+            "string",
+            "constant",
+            "hardcoded",
+            "flag"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "type-non-null-assertion",
+      "language": "typescript",
+      "prTitle": "Read optional user email",
+      "prDescription": "Prefer email when present on the session.",
+      "diffPath": "diffs/type-non-null-assertion.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "bang",
+          "file": "src/session/email.ts",
+          "line": 5,
+          "lineTolerance": 1,
+          "category": "type-safety",
+          "severityMin": "medium",
+          "keywords": [
+            "non-null",
+            "assertion",
+            "!",
+            "optional",
+            "undefined"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "type-double-cast",
+      "language": "typescript",
+      "prTitle": "Cast webhook payload",
+      "prDescription": "Treat unknown JSON as a typed event.",
+      "diffPath": "diffs/type-double-cast.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "cast",
+          "file": "src/webhooks/parse.ts",
+          "line": 6,
+          "lineTolerance": 1,
+          "category": "type-safety",
+          "severityMin": "medium",
+          "keywords": [
+            "cast",
+            "unknown",
+            "as",
+            "unsafe",
+            "validate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bp-missing-timeout",
+      "language": "typescript",
+      "prTitle": "Call partner API",
+      "prDescription": "Forward inventory checks upstream.",
+      "diffPath": "diffs/bp-missing-timeout.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "timeout",
+          "file": "src/partners/inventory.ts",
+          "line": 3,
+          "lineTolerance": 2,
+          "category": "best-practices",
+          "severityMin": "medium",
+          "keywords": [
+            "timeout",
+            "abort",
+            "hang",
+            "fetch",
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bp-logged-pii",
+      "language": "typescript",
+      "prTitle": "Log failed sign-in",
+      "prDescription": "Debug authentication failures.",
+      "diffPath": "diffs/bp-logged-pii.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "pii",
+          "file": "src/auth/logFailure.ts",
+          "line": 4,
+          "lineTolerance": 2,
+          "category": "best-practices",
+          "severityMin": "medium",
+          "keywords": [
+            "pii",
+            "password",
+            "log",
+            "sensitive",
+            "credential"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "logic-wrong-length",
+      "language": "typescript",
+      "prTitle": "Paginate search hits",
+      "prDescription": "Slice results for the UI.",
+      "diffPath": "diffs/logic-wrong-length.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "slice",
+          "file": "src/search/page.ts",
+          "line": 3,
+          "lineTolerance": 1,
+          "category": "logic",
+          "severityMin": "medium",
+          "keywords": [
+            "off-by",
+            "slice",
+            "page",
+            "index",
+            "length"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-cors-star",
+      "language": "typescript",
+      "prTitle": "Enable CORS for SPA",
+      "prDescription": "Allow browser clients to call the API.",
+      "diffPath": "diffs/sec-cors-star.diff",
+      "negative": false,
+      "expected": [
+        {
+          "id": "cors",
+          "file": "src/http/cors.ts",
+          "line": 3,
+          "lineTolerance": 2,
+          "category": "security",
+          "severityMin": "medium",
+          "keywords": [
+            "cors",
+            "origin",
+            "*",
+            "wildcard",
+            "credential"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clean-path-basename",
+      "language": "typescript",
+      "prTitle": "Safe avatar path",
+      "prDescription": "Only allow basenames under uploads.",
+      "diffPath": "diffs/clean-path-basename.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-url-allowlist",
+      "language": "typescript",
+      "prTitle": "Allowlisted preview fetch",
+      "prDescription": "Only fetch from CDN hosts.",
+      "diffPath": "diffs/clean-url-allowlist.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-crypto-token",
+      "language": "typescript",
+      "prTitle": "Secure reset tokens",
+      "prDescription": "Use crypto random bytes for tokens.",
+      "diffPath": "diffs/clean-crypto-token.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-relative-redirect",
+      "language": "typescript",
+      "prTitle": "Safe post-login redirect",
+      "prDescription": "Only allow relative next paths.",
+      "diffPath": "diffs/clean-relative-redirect.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-logged-error",
+      "language": "typescript",
+      "prTitle": "Analytics with logging",
+      "prDescription": "Log publish failures without swallowing silently.",
+      "diffPath": "diffs/clean-logged-error.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-await-cache",
+      "language": "typescript",
+      "prTitle": "Awaited cache warm",
+      "prDescription": "Wait for prefetch with Promise.allSettled.",
+      "diffPath": "diffs/clean-await-cache.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-strict-equality",
+      "language": "typescript",
+      "prTitle": "Strict admin check",
+      "prDescription": "Compare roles with ===.",
+      "diffPath": "diffs/clean-strict-equality.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-async-fs",
+      "language": "typescript",
+      "prTitle": "Async theme loader",
+      "prDescription": "Non-blocking theme CSS reads.",
+      "diffPath": "diffs/clean-async-fs.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-capped-buffer",
+      "language": "typescript",
+      "prTitle": "Capped audit buffer",
+      "prDescription": "Drop oldest events when full.",
+      "diffPath": "diffs/clean-capped-buffer.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-type-guard",
+      "language": "typescript",
+      "prTitle": "Guarded email reader",
+      "prDescription": "Check optional email before use.",
+      "diffPath": "diffs/clean-type-guard.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-zod-parse",
+      "language": "typescript",
+      "prTitle": "Zod webhook parse",
+      "prDescription": "Validate invoice events at the boundary.",
+      "diffPath": "diffs/clean-zod-parse.diff",
+      "negative": true,
+      "expected": []
+    },
+    {
+      "id": "clean-fetch-timeout",
+      "language": "typescript",
+      "prTitle": "Partner fetch with timeout",
+      "prDescription": "Abort inventory calls after 3s.",
+      "diffPath": "diffs/clean-fetch-timeout.diff",
+      "negative": true,
+      "expected": []
+    }
+  ]
+}

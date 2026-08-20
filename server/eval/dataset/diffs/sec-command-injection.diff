@@ -1,0 +1,20 @@
+diff --git a/src/jobs/thumbnail.ts b/src/jobs/thumbnail.ts
+new file mode 100644
+index 0000000..5555555
+--- /dev/null
++++ b/src/jobs/thumbnail.ts
+@@ -0,0 +1,14 @@
++import { exec } from 'node:child_process';
++import { promisify } from 'node:util';
++
++const execAsync = promisify(exec);
++
++export async function generateThumbnail(inputPath: string, size: string) {
++  // size comes from query params and is interpolated into a shell command.
++  const command = `convert ${inputPath} -resize ${size} /tmp/thumb.jpg`;
++  const { stdout, stderr } = await execAsync(command);
++  if (stderr) {
++    console.warn(stderr);
++  }
++  return stdout;
++}

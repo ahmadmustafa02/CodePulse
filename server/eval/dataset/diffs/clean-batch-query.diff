@@ -1,0 +1,25 @@
+diff --git a/src/reports/safeAuthorStats.ts b/src/reports/safeAuthorStats.ts
+new file mode 100644
+index 0000000..d888888
+--- /dev/null
++++ b/src/reports/safeAuthorStats.ts
+@@ -0,0 +1,18 @@
++type Db = {
++  query: <T>(sql: string, params?: unknown[]) => Promise<T[]>;
++};
++
++export async function loadAuthorPostCounts(db: Db, authorIds: string[]) {
++  if (authorIds.length === 0) {
++    return [];
++  }
++
++  const rows = await db.query<{ author_id: string; count: string }>(
++    `SELECT author_id, COUNT(*)::text AS count
++     FROM posts
++     WHERE author_id = ANY($1::text[])
++     GROUP BY author_id`,
++    [authorIds],
++  );
++
++  return rows.map((row) => ({ authorId: row.author_id, count: Number(row.count) }));
++}

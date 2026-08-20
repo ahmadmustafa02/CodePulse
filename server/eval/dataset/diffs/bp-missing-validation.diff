@@ -1,0 +1,25 @@
+diff --git a/src/http/createOrder.ts b/src/http/createOrder.ts
+new file mode 100644
+index 0000000..ccccccc
+--- /dev/null
++++ b/src/http/createOrder.ts
+@@ -0,0 +1,18 @@
++export type OrderInput = {
++  sku: string;
++  quantity: number;
++  customerId: string;
++};
++
++export async function createOrder(body: OrderInput) {
++  // No validation of quantity / sku before persistence side effects.
++  await persistOrder({
++    sku: body.sku,
++    quantity: body.quantity,
++    customerId: body.customerId,
++  });
++  return { ok: true as const };
++}
++
++async function persistOrder(order: OrderInput): Promise<void> {
++  await fetch('https://orders.internal/api', { method: 'POST', body: JSON.stringify(order) });
++}

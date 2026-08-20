@@ -1,0 +1,28 @@
+diff --git a/src/reports/authorStats.ts b/src/reports/authorStats.ts
+new file mode 100644
+index 0000000..aaaaaaa
+--- /dev/null
++++ b/src/reports/authorStats.ts
+@@ -0,0 +1,20 @@
++type Db = {
++  query: <T>(sql: string, params?: unknown[]) => Promise<T[]>;
++};
++
++export async function loadAuthorPostCounts(db: Db, authorIds: string[]) {
++  const results: Array<{ authorId: string; count: number }> = [];
++
++  // N+1: one query per author instead of a single grouped query.
++  for (const authorId of authorIds) {
++    const rows = await db.query<{ count: string }>(
++      'SELECT COUNT(*)::text AS count FROM posts WHERE author_id = $1',
++      [authorId],
++    );
++    results.push({ authorId, count: Number(rows[0]?.count ?? 0) });
++  }
++
++  return results;
++}
++
++export function sumCounts(rows: Array<{ count: number }>): number {
++  return rows.reduce((sum, row) => sum + row.count, 0);
++}

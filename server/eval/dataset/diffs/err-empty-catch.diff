@@ -1,0 +1,19 @@
+diff --git a/src/analytics/track.ts b/src/analytics/track.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/analytics/track.ts
+@@ -0,0 +1,12 @@
++type Bus = { publish: (event: string, payload: unknown) => Promise<void> };
++
++export async function track(bus: Bus, event: string, payload: unknown) {
++  try {
++    await bus.publish(event, payload);
++  } catch {
++    // Empty catch swallows publish failures.
++  }
++}
++
++export function pageView(path: string) {
++  return { type: 'page_view', path };
++}

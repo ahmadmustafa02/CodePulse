@@ -32,4 +32,12 @@ export type AnalysisResult = {
   analyzedAt: string;
   modelUsed: string;
   tokensUsed: number;
+  /** Chunks that were attempted during deep analysis. */
+  chunksAttempted?: number;
+  /** Chunks that threw (tool parse / API errors). Eval treats incomplete analysis as findings-missed. */
+  chunksFailed?: number;
+  /** True when one or more chunks failed or the outer analysis path soft-failed to empty. */
+  analysisIncomplete?: boolean;
+  /** True when failures were Groq rate limits (infra) — eval excludes these from P/R rather than scoring as FN. */
+  rateLimited?: boolean;
 };

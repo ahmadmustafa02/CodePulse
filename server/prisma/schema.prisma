@@ -12,13 +12,21 @@ model Organization {
   id                   String   @id @default(cuid())
   name                 String
   githubInstallationId Int      @unique
+  /// Opt-in: open verified refactor PRs for maintainability findings. Default OFF.
+  refactorPrEnabled    Boolean  @default(false)
+  /// Max refactor attempts for a single source PR (per review head).
+  refactorPrPerPrCap   Int      @default(3)
+  /// Max refactor attempts per org per UTC day.
+  refactorPrDailyCap   Int      @default(10)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  repositories Repository[]
-  developers   Developer[]
-  pullRequests PullRequest[]
-  issues       Issue[]
+  repositories     Repository[]
+  developers       Developer[]
+  pullRequests     PullRequest[]
+  issues           Issue[]
+  reviewJobs       ReviewJob[]
+  refactorAttempts RefactorAttempt[]
 }
 
 model Repository {
@@ -33,6 +41,7 @@ model Repository {
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   pullRequests PullRequest[]
+  reviewJobs   ReviewJob[]
 }
 
 model Developer {
@@ -114,4 +123,76 @@ model User {
   installationId      Int?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+/// Durable review pipeline job. Unique (repoId, prNumber, headSha) is the
+/// idempotency source of truth — concurrent webhook deliveries race the DB, not app checks.
+model ReviewJob {
+  id             String    @id @default(cuid())
+  organizationId String
+  repoId         String
+  prNumber       Int
+  headSha        String
+  status         String    @default("queued") // queued | processing | completed | failed | dead
+  attempts       Int       @default(0)
+  lastError      String?
+  deliveryId     String?
+  /// Minimal webhook snapshot required to process the job after enqueue.
+  payload        Json
+  createdAt      DateTime  @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  repository   Repository   @relation(fields: [repoId], references: [id])
+  traces       TraceEvent[]
+
+  @@unique([repoId, prNumber, headSha])
+  @@index([organizationId, status])
+  @@index([status, createdAt])
+}
+
+/// Generic pipeline trace events (CodePulse reviews now; LabCrew-compatible later).
+model TraceEvent {
+  id             String    @id @default(cuid())
+  jobId          String
+  organizationId String
+  step           String
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  status         String // started | completed | failed
+  metadata       Json?
+
+  job ReviewJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, startedAt])
+  @@index([organizationId, startedAt])
+  @@index([jobId, step, status])
+}
+
+/// Persist refactor-PR attempt outcomes (success / rejected-by-gate / failed / capped).
+model RefactorAttempt {
+  id               String   @id @default(cuid())
+  organizationId   String
+  reviewJobId      String
+  sourcePrNumber   Int
+  sourceHeadSha    String
+  /// Stable id for one-attempt-per-finding-per-headSha (file|line|category|title hash).
+  findingKey       String
+  findingCategory  String
+  findingTitle     String
+  findingFile      String
+  findingLine      Int
+  /// success | rejected-by-gate | failed | capped | skipped-flag-off
+  status           String
+  detail           String?
+  refactorPrNumber Int?
+  refactorPrUrl    String?
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, sourcePrNumber, sourceHeadSha, findingKey])
+  @@index([organizationId, createdAt])
+  @@index([reviewJobId])
 }

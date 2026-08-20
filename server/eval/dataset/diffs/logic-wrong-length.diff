@@ -1,0 +1,15 @@
+diff --git a/src/search/page.ts b/src/search/page.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/search/page.ts
+@@ -0,0 +1,8 @@
++export function pageItems<T>(items: T[], page: number, size: number) {
++  // Uses 1-based page but multiplies as if 0-based incorrectly for last page edge.
++  const start = page * size;
++  return items.slice(start, start + size);
++}
++
++export function pageCount(total: number, size: number) {
++  return Math.ceil(total / size);
++}
