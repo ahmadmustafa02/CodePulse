@@ -1,0 +1,21 @@
+diff --git a/src/ui/safeComment.tsx b/src/ui/safeComment.tsx
+new file mode 100644
+index 0000000..d444444
+--- /dev/null
++++ b/src/ui/safeComment.tsx
+@@ -0,0 +1,14 @@
++import React from 'react';
++
++type Props = {
++  author: string;
++  bodyText: string;
++};
++
++export function CommentBody({ author, bodyText }: Props) {
++  return (
++    <article>
++      <h3>{author}</h3>
++      <p className="comment-body">{bodyText}</p>
++    </article>
++  );
++}

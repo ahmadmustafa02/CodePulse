@@ -1,0 +1,22 @@
+diff --git a/src/config/loader.ts b/src/config/loader.ts
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/src/config/loader.ts
+@@ -0,0 +1,16 @@
++export type AppConfig = {
++  featureFlags: Record<string, boolean>;
++  timeoutMs: number;
++};
++
++export function parseRemoteConfig(payload: string): AppConfig {
++  // Remote operators historically sent "JS literals"; this is unsafe.
++  const parsed = eval(`(${payload})`) as AppConfig;
++  if (!parsed || typeof parsed !== 'object') {
++    throw new Error('Invalid config payload');
++  }
++  return {
++    featureFlags: parsed.featureFlags ?? {},
++    timeoutMs: parsed.timeoutMs ?? 5000,
++  };
++}

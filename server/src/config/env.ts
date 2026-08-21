@@ -20,8 +20,9 @@ const envSchema = z.object({
   GITHUB_OAUTH_CALLBACK_URL: z.string().url('GITHUB_OAUTH_CALLBACK_URL must be a valid URL'),
   GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  REDIS_URL: z.string().min(1, 'REDIS_URL is required').default('redis://127.0.0.1:6380'),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
-  DIGEST_FROM_EMAIL: z.string().email('DIGEST_FROM_EMAIL must be a valid email address'),
+  DIGEST_FROM_EMAIL: z.string().min(1, 'DIGEST_FROM_EMAIL is required'),
   DIGEST_CRON_SECRET: z
     .string()
     .min(20, 'DIGEST_CRON_SECRET must be at least 20 characters'),

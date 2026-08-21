@@ -16,32 +16,29 @@ webhooksRouter.use(extractWebhookHeaders);
 webhooksRouter.use(verifyGitHubSignature);
 
 webhooksRouter.post(GITHUB_WEBHOOK_ROUTE, (req, res, next) => {
-  try {
-    const { eventType, deliveryId } = res.locals as WebhookLocals;
-    const payload = req.body as PullRequestWebhookPayload;
+  void (async () => {
+    try {
+      const { eventType, deliveryId } = res.locals as WebhookLocals;
+      const payload = req.body as PullRequestWebhookPayload;
 
-    logger.info('GitHub webhook received', {
-      eventType,
-      deliveryId,
-      action: payload.action,
-      repo: payload.repository.full_name,
-      prNumber: payload.number,
-    });
-
-    res.status(HTTP_STATUS_ACCEPTED).json({
-      success: true,
-      data: { message: 'Webhook received', deliveryId },
-    });
-
-    const event: WebhookEvent = { eventType, deliveryId, payload };
-    void webhookProcessor.process(event).catch((error: unknown) => {
-      logger.error('Async webhook processing failed', {
+      logger.info('GitHub webhook received', {
+        eventType,
         deliveryId,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        action: payload.action,
+        repo: payload.repository.full_name,
+        prNumber: payload.number,
       });
-    });
-  } catch (error) {
-    next(error);
-  }
+
+      const event: WebhookEvent = { eventType, deliveryId, payload };
+      // Enqueue (or lifecycle sync) before ACK — no synchronous AI work here.
+      await webhookProcessor.process(event);
+
+      res.status(HTTP_STATUS_ACCEPTED).json({
+        success: true,
+        data: { message: 'Webhook accepted', deliveryId },
+      });
+    } catch (error) {
+      next(error);
+    }
+  })();
 });

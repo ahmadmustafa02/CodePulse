@@ -1,0 +1,16 @@
+diff --git a/src/http/safePreview.ts b/src/http/safePreview.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/http/safePreview.ts
+@@ -0,0 +1,14 @@
++const ALLOWED = new Set(['cdn.example.com', 'images.example.com']);
++
++export async function fetchPreview(imageUrl: string) {
++  const parsed = new URL(imageUrl);
++  if (!ALLOWED.has(parsed.hostname)) {
++    throw new Error('host not allowed');
++  }
++  const response = await fetch(parsed.toString());
++  return Buffer.from(await response.arrayBuffer());
++}

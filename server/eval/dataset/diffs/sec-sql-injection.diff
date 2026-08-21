@@ -1,0 +1,24 @@
+diff --git a/src/users/lookup.ts b/src/users/lookup.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/users/lookup.ts
+@@ -0,0 +1,18 @@
++import type { Pool } from 'pg';
++
++type Db = { query: (sql: string) => Promise<unknown> };
++
++export async function findUserById(db: Db, userId: string) {
++  // Intentionally concatenates untrusted input into SQL.
++  const sql = `SELECT id, email, role FROM users WHERE id = '${userId}'`;
++  const rows = await db.query(sql);
++  return rows;
++}
++
++export async function listUsersByRole(db: Pool, role: string) {
++  const result = await db.query(
++    'SELECT id, email FROM users WHERE role = $1 LIMIT 50',
++    [role],
++  );
++  return result.rows;
++}

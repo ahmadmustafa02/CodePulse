@@ -3,6 +3,7 @@
 import type { Developer, Issue, Organization, PullRequest, Repository, User } from '@prisma/client';
 import logger from '../utils/logger';
 import { prisma } from './prismaService';
+import { tenantRepository } from './tenantRepository';
 
 type UpsertOrganizationParams = {
   githubInstallationId: number;
@@ -318,15 +319,14 @@ export class DatabaseService {
     organizationId: string;
     since: Date;
   }): Promise<Issue[]> {
-    return prisma.issue.findMany({
+    return tenantRepository(params.organizationId).issues.findMany({
       where: {
         developerId: params.developerId,
-        organizationId: params.organizationId,
         createdAt: { gte: params.since },
       },
       include: { pullRequest: true },
       orderBy: { createdAt: 'desc' },
-    });
+    }) as Promise<Issue[]>;
   }
 
   async getDeveloperPatterns(params: {
@@ -336,7 +336,7 @@ export class DatabaseService {
     const groups = await prisma.issue.groupBy({
       by: ['developerId', 'category'],
       where: {
-        organizationId: params.organizationId,
+        organizationId: requireOrg(params.organizationId),
         createdAt: { gte: params.since },
       },
       _count: { category: true },
@@ -348,6 +348,13 @@ export class DatabaseService {
       count: group._count.category,
     }));
   }
+}
+
+function requireOrg(organizationId: string): string {
+  if (!organizationId.trim()) {
+    throw new Error('organizationId is required');
+  }
+  return organizationId;
 }
 
 export const databaseService = new DatabaseService();

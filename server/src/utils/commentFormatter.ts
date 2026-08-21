@@ -25,9 +25,10 @@ function inferLanguage(filename: string): string {
   return match?.language ?? 'plaintext';
 }
 
-export function formatIssueComment(issue: DetectedIssue): string {
+export function formatIssueComment(issue: DetectedIssue, jobId?: string): string {
   const emoji = SEVERITY_EMOJI[issue.severity];
   const language = inferLanguage(issue.file);
+  const marker = jobId ? `\n\n<!-- codepulse-job:${jobId} -->` : '';
 
   return `---
 ## ${emoji} [${issue.severity.toUpperCase()}] ${issue.title}
@@ -43,7 +44,7 @@ ${issue.codeSnippet}
 \`\`\`
 
 ---
-*🤖 CodePulse AI Review*`;
+*🤖 CodePulse AI Review*${marker}`;
 }
 
 function countBySeverity(issues: DetectedIssue[]): Record<IssueSeverity, number> {
@@ -74,7 +75,9 @@ export function formatReviewSummary(
   issues: DetectedIssue[],
   repo: string,
   prNumber: number,
+  jobId?: string,
 ): string {
+  const marker = jobId ? `\n\n<!-- codepulse-job:${jobId} -->` : '';
   const header = `## 🔍 CodePulse AI Review Complete
 
 Analyzed **${repo}** PR #${prNumber}`;
@@ -85,7 +88,7 @@ Analyzed **${repo}** PR #${prNumber}`;
 ✅ **No issues found.** This PR looks good!
 
 ---
-*🤖 Powered by CodePulse — AI-powered code review*`;
+*🤖 Powered by CodePulse — AI-powered code review*${marker}`;
   }
 
   const counts = countBySeverity(issues);
@@ -102,5 +105,9 @@ ${tableRows}
 > Issues are posted as inline comments on the relevant lines.
 
 ---
-*🤖 Powered by CodePulse — AI-powered code review*`;
+*🤖 Powered by CodePulse — AI-powered code review*${marker}`;
+}
+
+export function codePulseJobMarker(jobId: string): string {
+  return `<!-- codepulse-job:${jobId} -->`;
 }
