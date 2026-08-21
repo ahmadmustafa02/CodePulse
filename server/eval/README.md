@@ -21,11 +21,16 @@ EVAL_MAX_COMPLETION_TOKENS=2048 npm run eval:offline         # eval-only token k
 npm run eval:compare
 ```
 
+### Groq keys / rate limits
+- Production and default: `GROQ_API_KEY`.
+- Eval-only optional pool: `EVAL_GROQ_API_KEYS=gsk_a,gsk_b,gsk_c` (comma-separated). On **429 / TPD / TPM**, the harness rotates to the next key and retries the same case. When every key is exhausted, exit code **3** (resume later). Rate limits are **never** scored as `analysis_failed` and do **not** shrink the clean-case denominator.
+- Malformed tool responses that clearly mean “no issues” (`{"issues":[]}` / prose equivalent) are recovered as empty findings (with one stricter re-prompt) instead of `analysis_failed`.
+
 ### Checkpoint / free-tier resume
 - After each scored case, results are written to `eval/results/checkpoint-<model>.json`.
 - On restart, already-scored cases (`ok` / `analysis_failed`) are **skipped**.
-- On Groq **rate limit**: exit immediately with code **3** and message **RESUME TOMORROW** — no long backoff. Re-run the same command after the daily TPD window recovers.
-- Do **not** pay for Groq Dev tier for occasional evals; spread the suite across days.
+- On Groq **rate limit** with no remaining keys: exit immediately with code **3** — no long backoff. Re-run the same command after limits recover.
+- Use `--fresh` when comparing models under a harness change so old contaminated checkpoints are not reused.
 
 `EVAL_MAX_COMPLETION_TOKENS` only affects the offline harness (not production `GROQ_MAX_COMPLETION_TOKENS`).
 

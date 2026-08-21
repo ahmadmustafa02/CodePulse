@@ -24,6 +24,7 @@ import {
   type MatchPair,
 } from './lib/matchFindings';
 import { computeAggregateMetrics, formatNumber, formatPercent } from './lib/metrics';
+import { createGroqKeyPool } from './lib/groqKeyPool';
 
 type CaseResult = {
   id: string;
@@ -236,7 +237,7 @@ function buildMarkdown(report: ReturnType<typeof buildReport>): string {
   lines.push(`- **Cases failed (runner errors):** ${report.casesErrored}`);
   lines.push('');
   lines.push(
-    '_Analysis-failed cases score all expected findings as FN (findings-missed). They are not treated as successful cleans._',
+    '_Analysis-failed = genuine tool/parse failures after empty-intent recovery. Rate limits (429) are never counted as analysis_failed._',
   );
   lines.push('## Finding-level metrics');
   lines.push('');
@@ -304,7 +305,10 @@ function buildMarkdown(report: ReturnType<typeof buildReport>): string {
   lines.push('- Matching rules are documented in `eval/README.md`.');
   lines.push('- Finding-level metrics do not invent true negatives (TN).');
   lines.push(
-    '- **analysis_failed** (tool parse / chunk errors): predicted findings discarded; all expected findings count as FN. Clean cases in this state do not count as successful negatives.',
+    '- **analysis_failed** (tool parse / chunk errors after empty-intent recovery): predicted findings discarded; all expected findings count as FN. Clean cases in this state do not count as successful negatives.',
+  );
+  lines.push(
+    '- **rate_limited (429):** never scored as analysis_failed and never shrinks the clean denominator; runner exits or rotates `EVAL_GROQ_API_KEYS` instead.',
   );
   lines.push('- Checkpoint/resume: `eval/results/checkpoint-<model>.json` (use `--fresh` to ignore).');
   lines.push('');
@@ -451,6 +455,10 @@ async function main(): Promise<void> {
   const dataset = loadDataset();
   ensureResultsDir();
 
+  const keyPool = createGroqKeyPool((apiKey) => {
+    groqAnalysisService.setApiKey(apiKey);
+  });
+
   const checkpoint = loadCheckpoint(model, dataset.version);
   const scoredIds = Object.values(checkpoint.cases).filter(isScored).map((c) => c.id);
   const remaining = dataset.cases.filter((c) => !checkpoint.cases[c.id] || !isScored(checkpoint.cases[c.id]));
@@ -461,21 +469,39 @@ async function main(): Promise<void> {
   console.log(
     `Checkpoint: ${scoredIds.length} scored, ${remaining.length} remaining. Eval max_tokens=${maxCompletionTokens} (eval-only).`,
   );
-  console.log('On Groq rate limit: stop cleanly — re-run tomorrow to resume.\n');
+  console.log(
+    `Groq key pool: ${keyPool.size} key(s) (EVAL_GROQ_API_KEYS + GROQ_API_KEY). Active key #${keyPool.currentIndex}.`,
+  );
+  console.log(
+    'On Groq rate limit: rotate to next key if available; otherwise stop — re-run to resume.\n',
+  );
 
   for (const caseItem of remaining) {
-    process.stdout.write(`Evaluating ${caseItem.id}... `);
-    const result = await evaluateCase(caseItem, model, maxCompletionTokens);
+    let result: CaseResult;
+    for (;;) {
+      process.stdout.write(`Evaluating ${caseItem.id}... `);
+      result = await evaluateCase(caseItem, model, maxCompletionTokens);
 
-    if (isRateLimitedResult(result)) {
-      console.log(`RATE_LIMITED — stopping.`);
+      if (!isRateLimitedResult(result)) {
+        break;
+      }
+
+      const exhaustedIndex = keyPool.currentIndex;
+      if (keyPool.rotate()) {
+        console.log(
+          `RATE_LIMITED on key #${exhaustedIndex} — switched to key #${keyPool.currentIndex}, retrying ${caseItem.id}`,
+        );
+        continue;
+      }
+
+      console.log(`RATE_LIMITED — all ${keyPool.size} key(s) exhausted, stopping.`);
       console.error(
-        `\nRESUME TOMORROW: free-tier Groq TPD hit after ${scoredIds.length} scored cases.`,
+        `\nRESUME LATER: Groq rate limit after ${scoredIds.length} scored cases (all eval keys exhausted).`,
       );
       console.error(
         `Checkpoint saved at ${checkpointPath(model)} (${Object.values(checkpoint.cases).filter(isScored).length} scored).`,
       );
-      console.error(`Re-run the same command tomorrow; already-scored cases will be skipped.`);
+      console.error(`Re-run the same command after limits reset; already-scored cases will be skipped.`);
       console.error(`Exit code ${EXIT_RESUME_TOMORROW}.`);
       process.exit(EXIT_RESUME_TOMORROW);
     }

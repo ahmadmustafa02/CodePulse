@@ -14,7 +14,7 @@ import { formatPercent } from './lib/metrics';
 
 const primary = process.env.EVAL_MODEL?.trim() || GROQ_MODEL;
 const secondary =
-  process.env.EVAL_COMPARE_MODEL?.trim() || 'openai/gpt-oss-20b';
+  process.env.EVAL_COMPARE_MODEL?.trim() || 'openai/gpt-oss-120b';
 
 function runEval(model: string): Promise<number> {
   return new Promise((resolve, reject) => {

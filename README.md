@@ -178,7 +178,7 @@ npm run worker:dev   # BullMQ consumer
 
 ## Evaluation
 
-Offline benchmark under `server/eval/` (dataset + runner). Production analysis model: **`openai/gpt-oss-120b`**. Comparison runs use `EVAL_COMPARE_MODEL` (default `openai/gpt-oss-20b`).
+Offline benchmark under `server/eval/` (dataset + runner). Production analysis model: **`openai/gpt-oss-20b`**. Comparison runs can set `EVAL_COMPARE_MODEL` (e.g. `openai/gpt-oss-120b`) for side-by-side checks.
 
 ### Dataset
 
@@ -201,31 +201,27 @@ On that refined configuration: **TP = 12**, **FN = 0**. False-positive findings 
 
 A second experimental prompt was tried and **reverted**; it is not the production system result.
 
-### v2 precision gap — diagnosis (do not treat early v2 numbers as final)
+### v2 precision gap — diagnosis (historical)
 
-Early v2 runs on 2026-08-19 showed production `openai/gpt-oss-120b` at **31.5% precision / F1 47.1**, below the README’s v1 refined claim (**46.2% / 63.2%**), while `openai/gpt-oss-20b` beat it on precision and F1. That needed an explanation before calling Phase 5 done.
+Early v2 runs on 2026-08-19 showed `openai/gpt-oss-120b` at **31.5% precision / F1 47.1**, below the README’s v1 refined claim (**46.2% / 63.2%**), while `openai/gpt-oss-20b` beat it on precision and F1.
 
-**1. Prompt drift (real regression, now fixed):**  
-`main` was still on the **May baseline** SYSTEM_PROMPT (`git blame` → `47df2e7`). The evidence-based refined prompt lived only on divergent commit `fab2cbf` and was **never an ancestor of HEAD**. README claimed refined-as-production; the code did not. Early v2 precision (**31.5%**) sits next to v1 **baseline** precision (**30.0%**), not refined (**46.2%**) — consistent with measuring the broad prompt. Refined prompt text is restored in `groqAnalysisService.ts`; re-run `eval:offline` / `eval:compare` before treating any v2 row as the production baseline.
+**1. Prompt drift (real regression, fixed):**  
+`main` was still on the **May baseline** SYSTEM_PROMPT (`git blame` → `47df2e7`). The evidence-based refined prompt lived only on divergent commit `fab2cbf` and was **never an ancestor of HEAD**. Refined prompt text is restored in `groqAnalysisService.ts`.
 
-**2. Why the smaller model looked better (plausibly real, not just noise):**  
-v1 had **8** clean cases; v2 has **20**. More negatives are exactly where an eager FP-prone model loses precision. Under the drifted baseline prompt, 120b logged **61 FP** vs **30** positives (clean-case any-finding rate **55%**); 20b had **23 FP** and higher precision / F1 at the cost of recall. That shape matches a genuine “larger model over-flags under a loose prompt” finding — similar in spirit to the clustering artifact called out honestly in Paper 1 — not proof that 20b should replace production until the **same suite is re-run with the restored refined prompt**. If 20b still wins on precision/F1 after that, consider switching production or tightening further; do not decide on drifted-prompt numbers.
+**2. Clean-case pressure:** v2 has **20** negatives (v1 had **8**). Eager FP-prone behavior shows up harder on the larger clean set.
 
-**3. Eval-methodology change (also real, not a bug):**  
-v2 is larger and harder; aggregate P/F1 are **not** directly comparable to v1’s 46.2%. Report v1 and v2 separately; only compare models **within** the same suite + same prompt.
+**3. Eval-methodology:** v2 P/F1 are **not** directly comparable to v1’s 46.2%. Report v1 and v2 separately; only compare models **within** the same suite + same prompt + same harness.
 
-### v2 results after prompt restore (50 cases, refined prompt = production)
+### v2 locked production comparison (50 cases, fair harness, 2026-08-21)
 
-Re-run 2026-08-19 after restoring the evidence-based SYSTEM_PROMPT on `main`:
+Same-day `--fresh` runs under the fixed harness: empty-intent tool recovery, rate limits never counted as `analysis_failed`, optional `EVAL_GROQ_API_KEYS` rotation. Both models **50/50** scored, **`analysis_failed=0`**.
 
 | Model | Precision | Recall | F1 | TP | FP | FN | Clean any-FP rate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| openai/gpt-oss-120b (production) | 50.0% | **90.0%** | 64.3% | 27 | 27 | 3 | 60% (12/20) |
-| openai/gpt-oss-20b | **66.7%** | 80.0% | **72.7%** | 24 | 12 | 6 | **20% (4/20)** |
+| **openai/gpt-oss-20b (production)** | **56.5%** | 86.7% | **68.4%** | 26 | 20 | 4 | **40% (8/20)** |
+| openai/gpt-oss-120b (comparison) | 48.2% | **90.0%** | 62.8% | 27 | 29 | 3 | 60% (12/20) |
 
-FP findings for 120b dropped **61 → 27** vs the drifted-baseline run; precision **31.5% → 50.0%**. With the **same** refined prompt, **20b still wins on precision/F1** and clean-case FP rate — that part looks like a real model trade-off (recall vs precision), similar in honesty to the Paper 1 clustering note — not only an eval-size artifact. Caveat: 20b had more Groq `tool_use_failed` / parse errors that collapse to zero findings (helpful on cleans, harmful on positives as FN); treat the gap as directional, re-run before switching production.
-
-**Product fork (not decided):** keep 120b for recall, switch to 20b for precision, or tighten the prompt further and re-measure both.
+**Lock decision:** `GROQ_MODEL = openai/gpt-oss-20b`. 20b was chosen for lower false-positive rate on clean code (40% vs 60%), accepting a 3-point recall tradeoff, since reviewer trust in flagged findings matters more than marginal recall for a production review tool.
 
 ### v2 results under drifted baseline prompt (historical only)
 
@@ -253,7 +249,7 @@ cd server && npm run eval:compare
 
 Generated reports under `server/eval/results/` (`latest.json`, `latest-<model>.md`, `comparison.md`) are gitignored except examples. See [`server/eval/README.md`](server/eval/README.md) for matching rules.
 
-**Limitation:** Even at 50 cases this remains a focused TypeScript detection suite—useful for regression and prompt/model iteration, not statistically conclusive production proof.
+**Limitations / future work:** Even at 50 cases this remains a focused TypeScript detection suite—useful for regression and prompt/model iteration, not statistically conclusive production proof. A **40% clean-case false-positive rate** is still high on its own terms and is the biggest opportunity for further prompt refinement (same framing as the original baseline→refined prompt work).
 
 ### Database migrations (Neon)
 

@@ -363,6 +363,71 @@ function isRateLimitError(error: unknown): boolean {
   return msg.includes('429') || msg.includes('rate_limit');
 }
 
+/** Recover empty-intent when Groq rejects tool format but failed_generation says no issues. */
+function canRecoverEmptyIssuesFromError(error: unknown): boolean {
+  const msg = errorMessage(error);
+  const isFormatFailure =
+    msg.includes('tool_use_failed') ||
+    msg.includes('output_parse_failed') ||
+    msg.includes('did not return a tool call') ||
+    msg.includes('Failed to parse Groq tool call') ||
+    msg.includes('Tool choice is required');
+  if (!isFormatFailure || isRateLimitError(error)) return false;
+
+  const fg = extractFailedGenerationInline(msg);
+  if (fg && looksLikeEmptyIntentInline(fg)) return true;
+  return looksLikeEmptyIntentInline(msg);
+}
+
+function extractFailedGenerationInline(message: string): string | null {
+  const markers = ['failed_generation\\":\\"', 'failed_generation":"'];
+  for (const m of markers) {
+    const idx = message.indexOf(m);
+    if (idx === -1) continue;
+    let i = idx + m.length;
+    let out = '';
+    while (i < message.length) {
+      if (m.includes('\\"')) {
+        if (message.startsWith('\\"}', i) || message.startsWith('\\"}}', i)) break;
+        if (message[i] === '\\' && i + 1 < message.length) {
+          out += message[i] + message[i + 1];
+          i += 2;
+          continue;
+        }
+      } else if (message[i] === '"' && message[i - 1] !== '\\') {
+        break;
+      }
+      out += message[i];
+      i += 1;
+    }
+    try {
+      return JSON.parse(`"${out}"`);
+    } catch {
+      return out.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+  }
+  return null;
+}
+
+function looksLikeEmptyIntentInline(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (/\\?"issues\\?"\s*:\s*\[[\s\S]*\{/.test(t) && /category|title|severity/.test(t)) {
+    return false;
+  }
+  if (/\\?"issues\\?"\s*:\s*\[\s*\]/.test(t)) return true;
+  if (/```json\s*\{\s*"issues"\s*:\s*\[\s*\]\s*\}\s*```/i.test(t)) return true;
+  if (/```json\s*\[\s*\]\s*```/.test(t)) return true;
+  if (/^\s*\{\s*"issues"\s*:\s*\[\s*\]\s*\}\s*$/.test(t)) return true;
+  if (/^\s*\[\s*\]\s*$/.test(t)) return true;
+  if (/no issues? (identified|found|were identified)/i.test(t)) return true;
+  if (/no code quality.*issues/i.test(t)) return true;
+  if (/no actionable defects/i.test(t)) return true;
+  if (/no apparent[\s\S]{0,40}defects/i.test(t)) return true;
+  if (/likely no significant issues/i.test(t) || /no significant issues/i.test(t)) return true;
+  return false;
+}
+
 function rateLimitWaitMs(error: unknown, attempt: number): number {
   const msg = errorMessage(error);
   // Groq: "Please try again in 22m17.472s" or "try again in 12.5s"
@@ -381,10 +446,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class GroqAnalysisService {
-  private readonly groq: Groq;
+  private groq: Groq;
 
-  constructor() {
-    this.groq = new Groq({ apiKey: env.GROQ_API_KEY });
+  constructor(apiKey: string = env.GROQ_API_KEY) {
+    this.groq = new Groq({ apiKey });
+  }
+
+  /** Eval-only: swap API key after rate-limit rotation (never log the key). */
+  setApiKey(apiKey: string): void {
+    this.groq = new Groq({ apiKey });
   }
 
   /** Ranks changed files by review priority using a lightweight Groq completion. */
@@ -500,55 +570,115 @@ export class GroqAnalysisService {
     model: string,
     maxCompletionTokens?: number,
   ): Promise<{ issues: DetectedIssue[]; tokensUsed: number }> {
-    const response = await this.groq.chat.completions.create({
-      model,
-      max_tokens: maxCompletionTokens ?? GROQ_MAX_COMPLETION_TOKENS,
-      tools: [codeReviewTool],
-      tool_choice: { type: 'function', function: { name: GROQ_TOOL_NAME } },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Review this pull request diff:\n\n${formattedChunk}`,
-        },
-      ],
-    });
+    const stricterSuffix =
+      '\n\nIMPORTANT: You MUST call the report_code_issues tool. ' +
+      'If there are no issues, call it with {"issues": []}. Do not reply in prose or raw JSON.';
 
-    const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.type !== 'function') {
-      throw new Error('Groq did not return a tool call response');
-    }
-
-    let parsedResponse: unknown;
-    try {
-      parsedResponse = JSON.parse(toolCall.function.arguments);
-    } catch {
-      logger.error('Failed to parse Groq tool call response', {
-        rawArguments: toolCall.function.arguments,
-        repo: parsedDiff.repo,
-        prNumber: parsedDiff.prNumber,
+    const attemptOnce = async (extraUserSuffix: string) => {
+      const response = await this.groq.chat.completions.create({
+        model,
+        max_tokens: maxCompletionTokens ?? GROQ_MAX_COMPLETION_TOKENS,
+        tools: [codeReviewTool],
+        tool_choice: { type: 'function', function: { name: GROQ_TOOL_NAME } },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `Review this pull request diff:\n\n${formattedChunk}${extraUserSuffix}`,
+          },
+        ],
       });
-      throw new Error('Failed to parse Groq tool call response');
-    }
 
-    const validated = toolResponseSchema.safeParse(parsedResponse);
-    if (!validated.success) {
-      logger.error('Groq tool call response failed validation', {
-        issues: validated.error.issues,
-        repo: parsedDiff.repo,
-        prNumber: parsedDiff.prNumber,
-      });
-      throw new Error('Failed to parse Groq tool call response');
-    }
+      const message = response.choices[0]?.message;
+      const toolCall = message?.tool_calls?.[0];
+      if (!toolCall || toolCall.type !== 'function') {
+        const content = message?.content ?? '';
+        if (looksLikeEmptyIntentInline(content)) {
+          logger.info('Recovered empty findings from non-tool content', {
+            repo: parsedDiff.repo,
+            prNumber: parsedDiff.prNumber,
+          });
+          return { issues: [] as DetectedIssue[], tokensUsed: response.usage?.total_tokens ?? 0 };
+        }
+        throw new Error('Groq did not return a tool call response');
+      }
 
-    const issues = validated.data.issues
-      .map(mapRawIssue)
-      .filter((issue): issue is DetectedIssue => issue !== null);
+      let parsedResponse: unknown;
+      try {
+        parsedResponse = JSON.parse(toolCall.function.arguments);
+      } catch {
+        if (looksLikeEmptyIntentInline(toolCall.function.arguments)) {
+          return { issues: [] as DetectedIssue[], tokensUsed: response.usage?.total_tokens ?? 0 };
+        }
+        logger.error('Failed to parse Groq tool call response', {
+          rawArguments: toolCall.function.arguments,
+          repo: parsedDiff.repo,
+          prNumber: parsedDiff.prNumber,
+        });
+        throw new Error('Failed to parse Groq tool call response');
+      }
 
-    return {
-      issues,
-      tokensUsed: response.usage?.total_tokens ?? 0,
+      const validated = toolResponseSchema.safeParse(parsedResponse);
+      if (!validated.success) {
+        logger.error('Groq tool call response failed validation', {
+          issues: validated.error.issues,
+          repo: parsedDiff.repo,
+          prNumber: parsedDiff.prNumber,
+        });
+        throw new Error('Failed to parse Groq tool call response');
+      }
+
+      const issues = validated.data.issues
+        .map(mapRawIssue)
+        .filter((issue): issue is DetectedIssue => issue !== null);
+
+      return {
+        issues,
+        tokensUsed: response.usage?.total_tokens ?? 0,
+      };
     };
+
+    try {
+      return await attemptOnce('');
+    } catch (error) {
+      if (isRateLimitError(error)) throw error;
+
+      if (canRecoverEmptyIssuesFromError(error)) {
+        logger.info('Recovered empty findings from malformed Groq tool response', {
+          repo: parsedDiff.repo,
+          prNumber: parsedDiff.prNumber,
+        });
+        return { issues: [], tokensUsed: 0 };
+      }
+
+      // One stricter re-prompt for format failures only.
+      const msg = errorMessage(error);
+      const formatFail =
+        msg.includes('tool_use_failed') ||
+        msg.includes('output_parse_failed') ||
+        msg.includes('did not return a tool call') ||
+        msg.includes('Failed to parse Groq tool call') ||
+        msg.includes('Tool choice is required');
+      if (!formatFail) throw error;
+
+      try {
+        logger.warn('Retrying chunk analysis with stricter tool-call instruction', {
+          repo: parsedDiff.repo,
+          prNumber: parsedDiff.prNumber,
+        });
+        return await attemptOnce(stricterSuffix);
+      } catch (retryError) {
+        if (isRateLimitError(retryError)) throw retryError;
+        if (canRecoverEmptyIssuesFromError(retryError)) {
+          logger.info('Recovered empty findings after stricter retry', {
+            repo: parsedDiff.repo,
+            prNumber: parsedDiff.prNumber,
+          });
+          return { issues: [], tokensUsed: 0 };
+        }
+        throw retryError;
+      }
+    }
   }
 
   async analyzeDiff(
