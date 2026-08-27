@@ -212,16 +212,16 @@ Early v2 runs on 2026-08-19 showed `openai/gpt-oss-120b` at **31.5% precision / 
 
 **3. Eval-methodology:** v2 P/F1 are **not** directly comparable to v1’s 46.2%. Report v1 and v2 separately; only compare models **within** the same suite + same prompt + same harness.
 
-### v2 locked production comparison (50 cases, fair harness, 2026-08-21)
+### v2 fair same-day comparison (50 cases, 2026-08-21) — production lock
 
-Same-day `--fresh` runs under the fixed harness: empty-intent tool recovery, rate limits never counted as `analysis_failed`, optional `EVAL_GROQ_API_KEYS` rotation. Both models **50/50** scored, **`analysis_failed=0`**.
+Fair same-day `--fresh` runs under the fixed harness (empty-intent tool recovery; rate limits never counted as `analysis_failed`; optional `EVAL_GROQ_API_KEYS` rotation). Both models **50/50** scored, **`analysis_failed=0`** — not rate-limit contaminated.
 
 | Model | Precision | Recall | F1 | TP | FP | FN | Clean any-FP rate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | **openai/gpt-oss-20b (production)** | **56.5%** | 86.7% | **68.4%** | 26 | 20 | 4 | **40% (8/20)** |
 | openai/gpt-oss-120b (comparison) | 48.2% | **90.0%** | 62.8% | 27 | 29 | 3 | 60% (12/20) |
 
-**Lock decision:** `GROQ_MODEL = openai/gpt-oss-20b`. 20b was chosen for lower false-positive rate on clean code (40% vs 60%), accepting a 3-point recall tradeoff, since reviewer trust in flagged findings matters more than marginal recall for a production review tool.
+**Lock decision:** `GROQ_MODEL = openai/gpt-oss-20b`. 20b was chosen for lower false-positive rate on clean code (40% vs 60%), accepting a ~3-point recall tradeoff (86.7% vs 90.0%), because precision/clean-FP matter more than marginal recall for a production review tool — every false positive costs reviewer trust, and CodePulse’s own evaluation work already indicates AI-authored changes tend to draw more human scrutiny than average (so a few missed findings are less costly than systematic over-flagging).
 
 ### v2 results under drifted baseline prompt (historical only)
 
