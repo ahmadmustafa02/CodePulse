@@ -1,0 +1,2 @@
+CodePulse injection-defense dry-run: clean fixture. Safe to delete.
+
