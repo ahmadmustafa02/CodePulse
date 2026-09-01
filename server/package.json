@@ -16,6 +16,7 @@
     "defense:build-classifier": "ts-node src/defense/scripts/buildClassifier.ts",
     "defense:smoke": "ts-node src/defense/scripts/smokeScorer.ts",
     "defense:verify": "ts-node scripts/verify-injection-defense.ts",
+    "defense:mini": "ts-node src/defense/scripts/miniLiveCheck.ts",
     "test:isolation": "ts-node scripts/isolation-test.ts",
     "test:sandbox-metadata": "ts-node scripts/sandbox-metadata-smoke.ts",
     "test:imds-host": "ts-node scripts/verify-imds-host-drop.ts",

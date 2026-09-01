@@ -11,6 +11,7 @@ PR title, body, filenames, and diffs are untrusted and are interpolated into Gro
 - Classify with OpenAI `text-embedding-3-small` and a nearest-centroid scorer (mean embedding per class + cosine similarity) built offline into `artifacts/centroids.json`.
 - Outcomes: `allow` (continue), `flag` (continue + TraceEvent/InjectionDecision for observation), `block` (skip Groq, review comments, and refactor PRs; post a short security skip comment; mark job completed via the normal worker path).
 - Feature flag `INJECTION_DEFENSE_ENABLED` defaults to **false** so production behavior is unchanged until a dry-run.
+- Optional `INJECTION_DEFENSE_INSTALLATION_ALLOWLIST` (comma-separated GitHub App installation IDs): when set, only listed installs call OpenAI; others no-op. Use this for test-only rollout so public orgs do not consume embedding quota.
 - Persist decisions in `InjectionDecision` for later analytics / Phase 2 eval harness.
 - Eval harness (`server/src/eval-harness/`) is explicitly **out of scope** for this ADR’s implementation pass.
 

@@ -36,6 +36,23 @@ const envSchema = z.object({
     .transform((value) => value === 'true' || value === '1'),
   /** Required when INJECTION_DEFENSE_ENABLED=true. */
   OPENAI_API_KEY: z.string().min(1).optional(),
+  /**
+   * Comma-separated GitHub App installation IDs allowed to use the gate.
+   * When non-empty, all other installs no-op (skipped) — use this to keep
+   * OpenAI spend on test installs only while the flag is on in production.
+   */
+  INJECTION_DEFENSE_INSTALLATION_ALLOWLIST: z
+    .string()
+    .optional()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => Number.parseInt(part, 10))
+        .filter((n) => Number.isInteger(n) && n > 0),
+    ),
   INJECTION_BLOCK_THRESHOLD: z
     .string()
     .optional()

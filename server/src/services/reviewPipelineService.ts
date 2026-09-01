@@ -107,6 +107,7 @@ export class ReviewPipelineService {
           formattedDiffPreview: formatDiffForPrompt(diff),
           jobId,
           organizationId,
+          installationId,
         }),
       { filesChanged: diff.files.length },
     );

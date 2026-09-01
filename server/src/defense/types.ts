@@ -23,6 +23,8 @@ export type ScanUntrustedContentInput = {
   formattedDiffPreview: string;
   jobId: string;
   organizationId: string;
+  /** GitHub App installation id — used for test-only allowlisting. */
+  installationId?: number;
 };
 
 export type InjectionGateResult = {

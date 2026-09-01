@@ -90,14 +90,26 @@ export async function findDecisionForJob(reviewJobId: string): Promise<{
   return { id: row.id, outcome: row.outcome as InjectionOutcome };
 }
 
+function isInstallationAllowed(installationId: number | undefined): boolean {
+  const allowlist = env.INJECTION_DEFENSE_INSTALLATION_ALLOWLIST;
+  if (allowlist.length === 0) {
+    return true;
+  }
+  if (installationId === undefined) {
+    return false;
+  }
+  return allowlist.includes(installationId);
+}
+
 /**
  * Scan untrusted PR content. When `INJECTION_DEFENSE_ENABLED` is false, returns
  * allow with `skipped: true` and does not call OpenAI or write to Postgres.
+ * When an installation allowlist is set, non-listed installs also no-op (no OpenAI).
  */
 export async function scanUntrustedContent(
   input: ScanUntrustedContentInput,
 ): Promise<InjectionGateResult> {
-  if (!env.INJECTION_DEFENSE_ENABLED) {
+  if (!env.INJECTION_DEFENSE_ENABLED || !isInstallationAllowed(input.installationId)) {
     return {
       outcome: 'allow',
       scoreMalicious: 0,
