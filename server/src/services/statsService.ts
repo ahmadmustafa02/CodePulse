@@ -1,5 +1,6 @@
-/** Read-only analytics queries for dashboard API endpoints. */
+/** Read-only analytics queries for dashboard API endpoints — always tenant-scoped. */
 
+import { tenantRepository } from './tenantRepository';
 import { prisma } from './prismaService';
 import logger from '../utils/logger';
 
@@ -20,6 +21,8 @@ export async function getOrganizationIdByInstallationId(
 }
 
 export async function getDashboardStats(organizationId: string) {
+  const tenant = tenantRepository(organizationId);
+
   const [
     totalPRs,
     totalIssues,
@@ -29,21 +32,12 @@ export async function getDashboardStats(organizationId: string) {
     pullRequests,
     allPullRequests,
   ] = await Promise.all([
-    prisma.pullRequest.count({ where: { organizationId } }),
-    prisma.issue.count({ where: { organizationId } }),
-    prisma.issue.count({ where: { organizationId, severity: 'critical' } }),
-    prisma.issue.groupBy({
-      by: ['category'],
-      where: { organizationId },
-      _count: { category: true },
-    }),
-    prisma.issue.groupBy({
-      by: ['severity'],
-      where: { organizationId },
-      _count: { severity: true },
-    }),
-    prisma.pullRequest.findMany({
-      where: { organizationId },
+    tenant.pullRequests.count(),
+    tenant.issues.count(),
+    tenant.issues.count({ severity: 'critical' }),
+    tenant.issues.groupByCategory(),
+    tenant.issues.groupBySeverity(),
+    tenant.pullRequests.findMany({
       include: {
         developer: true,
         repository: true,
@@ -52,8 +46,7 @@ export async function getDashboardStats(organizationId: string) {
       orderBy: { updatedAt: 'desc' },
       take: 10,
     }),
-    prisma.pullRequest.findMany({
-      where: { organizationId },
+    tenant.pullRequests.findMany({
       include: { _count: { select: { issues: true } } },
     }),
   ]);
@@ -88,8 +81,8 @@ export async function getDashboardStats(organizationId: string) {
 export async function getRepositories(organizationId: string) {
   logger.info('getRepositories: querying by organizationId', { organizationId });
 
-  const repositories = await prisma.repository.findMany({
-    where: { organizationId },
+  const tenant = tenantRepository(organizationId);
+  const repositories = await tenant.repositories.findMany({
     include: {
       pullRequests: {
         include: { _count: { select: { issues: true } } },
@@ -129,8 +122,8 @@ export async function getRepositories(organizationId: string) {
 }
 
 export async function getReviews(organizationId: string) {
-  const pullRequests = await prisma.pullRequest.findMany({
-    where: { organizationId },
+  const tenant = tenantRepository(organizationId);
+  const pullRequests = await tenant.pullRequests.findMany({
     include: {
       developer: true,
       repository: true,
@@ -178,8 +171,8 @@ export async function getTeam(organizationId: string) {
   const since = new Date();
   since.setDate(since.getDate() - 28);
 
-  const developers = await prisma.developer.findMany({
-    where: { organizationId },
+  const tenant = tenantRepository(organizationId);
+  const developers = await tenant.developers.findMany({
     include: {
       issues: {
         where: { createdAt: { gte: since } },

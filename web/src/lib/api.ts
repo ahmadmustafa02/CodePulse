@@ -5,6 +5,9 @@ import type {
   RepositoryItem,
   ReviewItem,
   TeamMember,
+  JobsOverview,
+  JobTraceView,
+  JobTraceEvent,
 } from "@/types/api";
 import type { Severity } from "@/lib/severity";
 import { normalizeSeverity } from "@/lib/severity";
@@ -44,7 +47,11 @@ export const getStats = () => apiFetch<DashboardStats>("/stats");
 export const getRepositories = () => apiFetch<RepositoryItem[]>("/repositories");
 export const getReviews = () => apiFetch<ReviewItem[]>("/reviews");
 export const getTeam = () => apiFetch<TeamMember[]>("/team");
+export const getJobs = () => apiFetch<JobsOverview>("/jobs");
+export const getJobTrace = (jobId: string) => apiFetch<JobTraceView>(`/jobs/${jobId}/trace`);
 export const getSession = () => apiFetch<UserSession | null>("/auth/session");
+
+export type { JobsOverview, JobTraceView, JobTraceEvent };
 
 export async function logout(): Promise<void> {
   await apiFetch<null>("/auth/logout", { method: "POST" });
@@ -373,6 +380,8 @@ function buildDigest(team: TeamMember[], reviews: ReviewItem[]): DigestPayload {
 
 export const api = {
   stats: getStats,
+  jobs: getJobs,
+  jobTrace: getJobTrace,
   repos: async () => {
     const repos = await getRepositories();
     return repos.map((repo) => mapRepo(repo, repo.pullRequestCount));

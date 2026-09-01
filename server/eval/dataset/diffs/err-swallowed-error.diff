@@ -1,0 +1,25 @@
+diff --git a/src/billing/invoice.ts b/src/billing/invoice.ts
+new file mode 100644
+index 0000000..7777777
+--- /dev/null
++++ b/src/billing/invoice.ts
+@@ -0,0 +1,18 @@
++type Mailer = { send: (to: string, body: string) => Promise<void> };
++
++export async function emailInvoice(
++  mailer: Mailer,
++  customerEmail: string,
++  invoicePdf: Buffer,
++): Promise<boolean> {
++  try {
++    await mailer.send(customerEmail, invoicePdf.toString('base64'));
++    return true;
++  } catch {
++    // Errors are swallowed; caller believes send succeeded.
++    return true;
++  }
++}
++
++export function invoiceFilename(id: string): string {
++  return `invoice-${id}.pdf`;
++}

@@ -1,0 +1,18 @@
+diff --git a/src/http/preview.ts b/src/http/preview.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/http/preview.ts
+@@ -0,0 +1,12 @@
++export async function fetchPreview(imageUrl: string) {
++  // Forwards attacker-controlled URLs to the server-side fetch.
++  const response = await fetch(imageUrl);
++  if (!response.ok) {
++    throw new Error('preview failed');
++  }
++  return Buffer.from(await response.arrayBuffer());
++}
++
++export function isHttp(url: string) {
++  return url.startsWith('http://') || url.startsWith('https://');
++}

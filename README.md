@@ -60,14 +60,13 @@ Analytics reflect historical findings per developer and repository. CodePulse do
 ## How it works
 
 1. A GitHub App webhook delivers a pull-request event.
-2. The API verifies the HMAC signature and accepts the delivery.
-3. The webhook processor skips duplicate heads (same repo + PR + SHA already processed successfully).
-4. The PR diff is fetched and parsed.
-5. `GroqAnalysisService.analyzeDiff()` runs optional file triage, then chunked deep analysis with structured tool calling and Zod validation.
-6. Findings (category, severity, file, line, title, explanation, suggestion, code snippet) are posted as GitHub review comments and stored in PostgreSQL.
-7. The dashboard surfaces installation-scoped analytics; opt-in weekly digests are emailed via Resend.
+2. The API verifies the HMAC signature, inserts a `ReviewJob` (unique on repo + PR + head SHA), enqueues it on BullMQ/Redis, and returns **202 Accepted**.
+3. A separate **worker** process consumes the queue: fetch/parse diff → Groq triage + chunked analysis → GitHub comments → Postgres.
+4. Failed jobs retry with exponential backoff (3 attempts) then land in a dead-letter (`dead`) status, visible on the **Jobs** dashboard.
+5. Each pipeline step emits a `TraceEvent` for later Trace Viewer work.
+6. The dashboard surfaces installation-scoped analytics; opt-in weekly digests are emailed via Resend.
 
-The production analysis prompt is the **first evidence-based refinement** (higher precision at 100% recall on the offline suite). A second experimental prompt was evaluated and **reverted**; it is not the production configuration.
+The production analysis prompt is the **first evidence-based refinement** (higher precision at 100% recall on the offline v1 suite). A second experimental prompt was evaluated and **reverted**; it is not the production configuration. See Evaluation for a v2 precision-gap diagnosis (prompt drift on `main` was found and restored).
 
 ---
 
@@ -80,29 +79,37 @@ GitHub PR event
 GitHub webhook + HMAC-SHA256 verification
         │
         ▼
-Webhook processor
+API (enqueue only)
   • action routing (review vs lifecycle-only)
-  • PR-head idempotency (repo + PR + headSha)
+  • ReviewJob insert + @@unique(repoId, prNumber, headSha)
+  • BullMQ enqueue → 202 Accepted
         │
         ▼
-Diff retrieval / parsing
+Worker process (BullMQ consumer)
+  • fetch/parse diff
+  • Groq triage → chunked review → Zod-validated findings
+  • GitHub review comments + PostgreSQL persistence
+  • TraceEvent per step · retries → dead letter
         │
         ▼
-Groq structured analysis
-  (triage → chunked review → Zod-validated findings)
+Dashboard / Jobs / Digest APIs
         │
-        ├──────────────────────┐
-        ▼                      ▼
-GitHub review comments    PostgreSQL persistence
-                               │
-                               ▼
-                     Dashboard / Digest APIs
-                               │
-                               ▼
-                     Resend weekly email (opt-in)
+        ▼
+Resend weekly email (opt-in)
 ```
 
 Webhooks target the **Azure API host** directly. The **Vercel** frontend proxies `/api/v1/*` to the backend so session cookies remain same-origin.
+
+**Processes:** API App Service (`thecodepulse`) + Worker App Service (`thecodepulse-worker`, startup `npm run worker`) + Redis + Neon Postgres.
+
+### Optional refactor PRs (Phase 4, org flag OFF by default)
+For maintainability findings (`code-quality`, `best-practices`) only, an org may opt in to a **second** verified PR:
+1. Caps checked (one attempt per finding per `headSha`, per-PR + daily org caps) **before** any Groq patch call or sandbox start.
+2. Patch verified in an **ephemeral Docker** container (no worker secrets; registry-oriented egress; **cloud metadata `169.254.169.254` / link-local IMDS explicitly blocked**).
+3. On gate failure → TraceEvent + `RefactorAttempt` row; **no GitHub PR**.
+4. On success → separate `codepulse/refactor-*` branch/PR with rationale linking the source finding.
+
+See [`docs/architecture/adr/004-refactor-pr-verification-gate.md`](docs/architecture/adr/004-refactor-pr-verification-gate.md).
 
 ---
 
@@ -118,6 +125,22 @@ Webhooks target the **Azure API host** directly. The **Vercel** frontend proxies
 - HMAC-SHA256 signature verification on every delivery.
 - Review pipeline actions: `opened`, `synchronize`, `reopened`.
 - `closed` (including merges) updates lifecycle state without running another AI review.
+- Response code: **202 Accepted** after enqueue (or idempotent duplicate).
+- Idempotency: Postgres `UNIQUE (repoId, prNumber, headSha)` on `ReviewJob` — not check-then-insert.
+- Worker retries 3× with exponential backoff; permanent failures → `dead` (visible on `/jobs`).
+
+### Local Redis (BullMQ)
+```bash
+docker compose up -d   # Redis on localhost:6380 (LabCrew-consistent)
+```
+Set `REDIS_URL=redis://127.0.0.1:6380` in `server/.env`.
+
+Run API + worker:
+```bash
+cd server
+npm run dev          # API :3001
+npm run worker:dev   # BullMQ consumer
+```
 
 ### Review idempotency
 - Uses existing `PullRequest.headSha` as the success marker (written only after a successful review pipeline).
@@ -136,21 +159,38 @@ Webhooks target the **Azure API host** directly. The **Vercel** frontend proxies
 - This describes the implemented escaping for those interpolated strings—not a claim that every email path is broadly sanitized.
 
 ### Multi-tenant isolation
-- Organizations, repositories, pull requests, and issues are scoped to the GitHub App installation associated with the signed-in user.
+- **Tenant** = GitHub App installation → `Organization` (`organizationId`).
+- **Enforcement** = `tenantRepository(organizationId)` — every dashboard/job query for repositories, PRs, issues, developers, review jobs, and traces must go through this wrapper. Empty `organizationId` throws.
+- **Coverage:** `npm run test:isolation` seeds two installations and asserts A cannot read B’s rows for each tenant-scoped model.
+- See [`docs/architecture/adr/003-tenant-isolation-model.md`](docs/architecture/adr/003-tenant-isolation-model.md).
+
+### Multi-Tenancy & Data Isolation
+
+| Concern | Detail |
+|---|---|
+| Tenant definition | GitHub App installation → Organization |
+| Enforcement point | `server/src/services/tenantRepository.ts` |
+| Scoped models | Repository, PullRequest, Issue, Developer, ReviewJob, TraceEvent |
+| Test coverage | `npm run test:isolation` (2 seeded installations, cross-tenant null/empty assertions) |
+| Acceptance fixtures | `npm run cleanup:acceptance` removes Phase 1 fake-install test rows |
 
 ---
 
 ## Evaluation
 
-Offline benchmark under `server/eval/` (dataset + runner). Model used for reported results: **`openai/gpt-oss-120b`**.
+Offline benchmark under `server/eval/` (dataset + runner). Production analysis model: **`openai/gpt-oss-20b`**. Comparison runs can set `EVAL_COMPARE_MODEL` (e.g. `openai/gpt-oss-120b`) for side-by-side checks.
 
-| Dataset property | Value |
-|---|---|
-| Labeled TypeScript diffs | 20 |
-| Known defects | 12 |
-| Clean cases | 8 |
+### Dataset
 
-Reported **production** configuration = baseline + **first** evidence-based prompt refinement:
+| Property | v1 (historical) | v2 (current) |
+|---|---|---|
+| Labeled TypeScript diffs | 20 | **50** |
+| Known defects (positive) | 12 | **30** |
+| Clean cases | 8 | **20** |
+
+### Historical results (v1 dataset, 20 cases) — kept for honest iteration
+
+Reported **production** configuration on v1 = baseline + **first** evidence-based prompt refinement (model reported at the time: `openai/gpt-oss-120b`):
 
 | Stage | Recall | Precision | F1 | FP findings |
 |---|---:|---:|---:|---:|
@@ -159,17 +199,61 @@ Reported **production** configuration = baseline + **first** evidence-based prom
 
 On that refined configuration: **TP = 12**, **FN = 0**. False-positive findings fell from **28 → 14** while recall stayed at **100%**.
 
-A second experimental prompt was tried and **reverted**; it is not the production system result and is not reported here as the final configuration.
+A second experimental prompt was tried and **reverted**; it is not the production system result.
 
-**Limitation:** This is a small labeled/synthetic TypeScript suite. It is useful for regression and prompt iteration, not statistically conclusive evidence of large-scale production performance.
+### v2 precision gap — diagnosis (historical)
 
-Reproduce (requires configured Groq API credentials):
+Early v2 runs on 2026-08-19 showed `openai/gpt-oss-120b` at **31.5% precision / F1 47.1**, below the README’s v1 refined claim (**46.2% / 63.2%**), while `openai/gpt-oss-20b` beat it on precision and F1.
+
+**1. Prompt drift (real regression, fixed):**  
+`main` was still on the **May baseline** SYSTEM_PROMPT (`git blame` → `47df2e7`). The evidence-based refined prompt lived only on divergent commit `fab2cbf` and was **never an ancestor of HEAD**. Refined prompt text is restored in `groqAnalysisService.ts`.
+
+**2. Clean-case pressure:** v2 has **20** negatives (v1 had **8**). Eager FP-prone behavior shows up harder on the larger clean set.
+
+**3. Eval-methodology:** v2 P/F1 are **not** directly comparable to v1’s 46.2%. Report v1 and v2 separately; only compare models **within** the same suite + same prompt + same harness.
+
+### v2 fair same-day comparison (50 cases, 2026-08-21) — production lock
+
+Fair same-day `--fresh` runs under the fixed harness (empty-intent tool recovery; rate limits never counted as `analysis_failed`; optional `EVAL_GROQ_API_KEYS` rotation). Both models **50/50** scored, **`analysis_failed=0`** — not rate-limit contaminated.
+
+| Model | Precision | Recall | F1 | TP | FP | FN | Clean any-FP rate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **openai/gpt-oss-20b (production)** | **56.5%** | 86.7% | **68.4%** | 26 | 20 | 4 | **40% (8/20)** |
+| openai/gpt-oss-120b (comparison) | 48.2% | **90.0%** | 62.8% | 27 | 29 | 3 | 60% (12/20) |
+
+**Lock decision:** `GROQ_MODEL = openai/gpt-oss-20b`. 20b was chosen for lower false-positive rate on clean code (40% vs 60%), accepting a ~3-point recall tradeoff (86.7% vs 90.0%), because precision/clean-FP matter more than marginal recall for a production review tool — every false positive costs reviewer trust, and CodePulse’s own evaluation work already indicates AI-authored changes tend to draw more human scrutiny than average (so a few missed findings are less costly than systematic over-flagging).
+
+### v2 results under drifted baseline prompt (historical only)
+
+Captured **before** prompt restore:
+
+| Model | Precision | Recall | F1 | TP | FP | FN |
+|---|---:|---:|---:|---:|---:|---:|
+| openai/gpt-oss-120b (baseline prompt) | 31.5% | 93.3% | 47.1% | 28 | 61 | 2 |
+| openai/gpt-oss-20b (baseline prompt) | 50.0% | 76.7% | 60.5% | 23 | 23 | 7 |
+
+Full tables: `server/eval/results/`. Re-run with `npm run eval:offline` / `npm run eval:compare`.
+
+Reproduce dataset plumbing (no Groq):
+
+```bash
+cd server && npm run eval:smoke
+```
+
+Full offline LLM eval (requires configured Groq API credentials):
 
 ```bash
 cd server && npm run eval:offline
+cd server && npm run eval:compare
 ```
 
-Generated reports `server/eval/results/latest.json` and `latest.md` are gitignored. See [`server/eval/README.md`](server/eval/README.md) for matching rules when the eval package is present.
+Generated reports under `server/eval/results/` (`latest.json`, `latest-<model>.md`, `comparison.md`) are gitignored except examples. See [`server/eval/README.md`](server/eval/README.md) for matching rules.
+
+**Limitations / future work:** Even at 50 cases this remains a focused TypeScript detection suite—useful for regression and prompt/model iteration, not statistically conclusive production proof. A **40% clean-case false-positive rate** is still high on its own terms and is the biggest opportunity for further prompt refinement (same framing as the original baseline→refined prompt work).
+
+### Database migrations (Neon)
+
+Never `prisma db push` against shared/prod Neon. Generate reviewable SQL (`migrate dev --create-only` or hand-authored files), read for unexpected DROPs, then `migrate deploy`. See [`docs/architecture/neon-migration-process.md`](docs/architecture/neon-migration-process.md) — same rule for LabCrew.
 
 ---
 
@@ -307,6 +391,7 @@ cd server && npm run eval:offline
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret |
 | `GITHUB_OAUTH_CALLBACK_URL` | Must match OAuth app callback exactly |
 | `GROQ_API_KEY` | Groq API key |
+| `REDIS_URL` | BullMQ Redis URL (local default `redis://127.0.0.1:6380`) |
 | `AUTH_SECRET` | Session JWT signing secret (min 32 chars) |
 | `WEB_APP_URL` | Frontend origin for CORS and redirects |
 | `RESEND_API_KEY` | Resend API key |
@@ -340,12 +425,19 @@ cd server && npm run eval:offline
 
 ```bash
 # Server (from server/)
-npm run dev         # nodemon + ts-node
+npm run dev         # nodemon + ts-node (API)
+npm run worker:dev  # BullMQ worker
+npm run worker      # production worker (dist/)
 npm run build       # compile TypeScript
 npm run start       # node dist/index.js
 npm run typecheck
 npm run lint
+npm run eval:smoke     # dataset + diff parse (no Groq)
 npm run eval:offline   # offline review benchmark
+npm run eval:compare   # production model vs EVAL_COMPARE_MODEL
+
+# Root
+docker compose up -d   # Redis :6380
 
 # Web (from web/)
 npm run dev         # Vite (port 8080)
@@ -360,9 +452,13 @@ npm run lint
 | Layer | Host |
 |---|---|
 | Frontend | Vercel |
-| API | Azure App Service |
+| API | Azure App Service (`thecodepulse`) |
+| Worker | Azure App Service (`thecodepulse-worker`, startup `npm run worker`) |
+| Queue | Redis (`REDIS_URL`) |
 | Database | Neon PostgreSQL |
 | Weekly digest cron | GitHub Actions ([`weekly-digest.yml`](.github/workflows/weekly-digest.yml)) |
+
+See ADRs: [`docs/architecture/adr/001-why-bullmq-over-sync.md`](docs/architecture/adr/001-why-bullmq-over-sync.md), [`docs/architecture/adr/002-headsha-idempotency.md`](docs/architecture/adr/002-headsha-idempotency.md).
 
 GitHub webhooks must point to the **API host**, not the Vercel frontend URL.
 
@@ -370,7 +466,7 @@ GitHub webhooks must point to the **API host**, not the Vercel frontend URL.
 
 ## Limitations & future work
 
-- The offline evaluation set is small (20 labeled TypeScript diffs).
+- The offline evaluation set is **50** labeled TypeScript diffs (v2; was 20 in v1).
 - The benchmark focuses on TypeScript and issue *detection*, not large-scale developer acceptance of suggested fixes.
 - Broader real-world PR corpora, additional model comparisons, and fix-acceptance metrics are natural next research/engineering extensions.
 

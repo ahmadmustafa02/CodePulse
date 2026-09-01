@@ -77,3 +77,52 @@ export type TeamMember = {
   topCategory: string;
   trend: { date: string; count: number }[];
 };
+
+export type ReviewJobItem = {
+  id: string;
+  repo: string;
+  prNumber: number;
+  headSha: string;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+  deliveryId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
+export type JobTraceEvent = {
+  id: string;
+  step: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  attempt: number | null;
+  likelyRootCause: boolean;
+  metadata: Record<string, unknown> | null;
+};
+
+export type JobTraceView = {
+  job: Omit<ReviewJobItem, "deliveryId">;
+  events: JobTraceEvent[];
+};
+
+export type JobsOverview = {
+  counts: {
+    queued: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    dead: number;
+  };
+  queue: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+  };
+  jobs: ReviewJobItem[];
+};

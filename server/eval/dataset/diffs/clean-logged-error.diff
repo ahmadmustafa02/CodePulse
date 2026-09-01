@@ -1,0 +1,15 @@
+diff --git a/src/analytics/safeTrack.ts b/src/analytics/safeTrack.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/analytics/safeTrack.ts
+@@ -0,0 +1,12 @@
++type Bus = { publish: (event: string, payload: unknown) => Promise<void> };
++
++export async function track(bus: Bus, event: string, payload: unknown) {
++  try {
++    await bus.publish(event, payload);
++  } catch (error) {
++    console.error('analytics publish failed', error);
++  }
++}

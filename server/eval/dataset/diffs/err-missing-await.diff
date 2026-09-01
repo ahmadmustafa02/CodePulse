@@ -1,0 +1,22 @@
+diff --git a/src/api/profile.ts b/src/api/profile.ts
+new file mode 100644
+index 0000000..6666666
+--- /dev/null
++++ b/src/api/profile.ts
+@@ -0,0 +1,16 @@
++export type Profile = { id: string; name: string };
++
++export async function fetchProfile(userId: string): Promise<Profile> {
++  const response = await fetch(`https://api.example.com/users/${userId}`);
++  if (!response.ok) {
++    throw new Error(`Failed to load profile: ${response.status}`);
++  }
++  // Missing await — returns a Promise, not Profile; callers will see wrong shape.
++  const data = response.json();
++  return data as unknown as Profile;
++}
++
++export async function displayName(userId: string): Promise<string> {
++  const profile = await fetchProfile(userId);
++  return profile.name;
++}

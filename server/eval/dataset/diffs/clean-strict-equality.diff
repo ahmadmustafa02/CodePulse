@@ -1,0 +1,9 @@
+diff --git a/src/auth/strictAdmin.ts b/src/auth/strictAdmin.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/auth/strictAdmin.ts
+@@ -0,0 +1,4 @@
++export function isAdmin(role: string) {
++  return role === 'admin';
++}

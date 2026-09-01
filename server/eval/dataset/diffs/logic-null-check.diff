@@ -1,0 +1,25 @@
+diff --git a/src/cart/discount.ts b/src/cart/discount.ts
+new file mode 100644
+index 0000000..8888888
+--- /dev/null
++++ b/src/cart/discount.ts
+@@ -0,0 +1,18 @@
++export type Coupon = { code: string; percentOff: number } | null;
++
++export function applyCoupon(subtotalCents: number, coupon: Coupon): number {
++  // Bug: uses truthiness incorrectly for percentOff === 0, and dereferences
++  // coupon before verifying it is non-null when percentOff is checked alone.
++  if (coupon.percentOff) {
++    const discounted = subtotalCents - (subtotalCents * coupon.percentOff) / 100;
++    return Math.max(0, Math.floor(discounted));
++  }
++  return subtotalCents;
++}
++
++export function formatMoney(cents: number): string {
++  return `$${(cents / 100).toFixed(2)}`;
++}
++
++export function isFreeOrder(totalCents: number): boolean {
++  return totalCents === 0;
++}

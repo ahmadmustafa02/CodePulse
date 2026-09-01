@@ -13,3 +13,6 @@ dist/
 
 server/eval/results/latest.json
 server/eval/results/latest.md
+
+# Local mmdc verification snapshots (Mermaid source in *.md is canonical)
+docs/architecture/previews/

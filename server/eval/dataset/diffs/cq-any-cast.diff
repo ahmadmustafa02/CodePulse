@@ -1,0 +1,23 @@
+diff --git a/src/auth/session.ts b/src/auth/session.ts
+new file mode 100644
+index 0000000..bbbbbbb
+--- /dev/null
++++ b/src/auth/session.ts
+@@ -0,0 +1,16 @@
++export type SessionUser = {
++  id: string;
++  role: 'admin' | 'member';
++};
++
++export function readSessionUser(raw: unknown): SessionUser {
++  // Unchecked any-cast hides missing fields at runtime.
++  const user = raw as any;
++  return {
++    id: user.id,
++    role: user.role,
++  };
++}
++
++export function isAdmin(user: SessionUser): boolean {
++  return user.role === 'admin';
++}

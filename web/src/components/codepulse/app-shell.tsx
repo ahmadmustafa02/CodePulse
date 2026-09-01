@@ -7,6 +7,7 @@ import {
   Users,
   Mail,
   Settings as SettingsIcon,
+  ListTodo,
   LogOut,
 } from "lucide-react";
 import { CodePulseMark } from "./site-nav";
@@ -51,6 +52,7 @@ function buildNav(pathname: string, repos: RepoRow[] | undefined, developers: De
       icon: Users,
       match: "/developers",
     },
+    { to: "/jobs", label: "Jobs", icon: ListTodo, match: "/jobs" },
     { to: "/digest", label: "Weekly digest", icon: Mail, match: "/digest" },
     { to: "/settings", label: "Settings", icon: SettingsIcon, match: "/settings" },
   ];
