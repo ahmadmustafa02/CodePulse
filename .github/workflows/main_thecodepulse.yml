@@ -61,11 +61,10 @@ jobs:
           package: .
 
   # Sibling App Service running `npm run worker` (startup command configured in Azure).
-  # Create app `thecodepulse-worker` with the same settings as the API plus REDIS_URL.
+  # App: thecodepulse-worker — same artifact as API; required for review pipeline + injection gate.
   deploy-worker:
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ vars.DEPLOY_WORKER_APP == 'true' }}
     permissions:
       id-token: write
       contents: read
