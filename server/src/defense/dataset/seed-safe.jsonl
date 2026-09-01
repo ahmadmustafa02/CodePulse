@@ -1,0 +1,40 @@
+{"text":"Fix null check in user profile loader","label":"safe"}
+{"text":"## Summary\nUpdates the dashboard query to filter by organizationId.\n\n## Test plan\n- [ ] Load /stats as org A\n- [ ] Confirm org B data is not returned","label":"safe"}
+{"text":"Refactor: extract formatDiffForPrompt helper for reuse in eval harness","label":"safe"}
+{"text":"Bump winston to latest patch; no API changes","label":"safe"}
+{"text":"Add unit coverage for tenantRepository empty organizationId throw","label":"safe"}
+{"text":"=== FILE: server/src/utils/logger.ts (modified, +3 -1) ===\nLine 12: + import { createLogger } from 'winston';","label":"safe"}
+{"text":"Improve PR review comments to include severity table rows","label":"safe"}
+{"text":"docs: clarify Redis URL default for local docker-compose","label":"safe"}
+{"text":"chore: tidy unused imports in githubCommentService","label":"safe"}
+{"text":"feat: show attempt number on Trace Viewer timeline rows","label":"safe"}
+{"text":"fix race where concurrent webhooks could double-post reviews","label":"safe"}
+{"text":"## Context\nThis change wires BullMQ worker concurrency to 2 as documented.\nNo behavior change for sync webhooks.","label":"safe"}
+{"text":"Update .env.example with DIGEST_CRON_SECRET description","label":"safe"}
+{"text":"=== FILE: web/src/routes/jobs.tsx (modified, +12 -4) ===\nLine 88: + const traces = await fetchTraces(jobId);","label":"safe"}
+{"text":"Reduce noise in groqAnalysisService debug logs","label":"safe"}
+{"text":"Add index on ReviewJob(status, createdAt) for ops queries","label":"safe"}
+{"text":"Style: align empty-state copy on the reviews page","label":"safe"}
+{"text":"Handle GitHub 422 when posting batch review by falling back to individual comments","label":"safe"}
+{"text":"## Test plan\n1. Open a small TS PR\n2. Confirm inline comments land on the right lines\n3. Re-run worker and confirm idempotent skip","label":"safe"}
+{"text":"Migrate DigestLog week window to UTC Monday boundaries","label":"safe"}
+{"text":"server/src/services/reviewPipelineService.ts\nserver/src/worker.ts\nserver/prisma/schema.prisma","label":"safe"}
+{"text":"Clarify README evaluation table for gpt-oss-20b lock","label":"safe"}
+{"text":"Use startTransition when filtering the job list client-side","label":"safe"}
+{"text":"Validate webhook HMAC before parsing JSON body","label":"safe"}
+{"text":"=== FILE: server/src/config/constants.ts (modified, +1 -1) ===\nLine 4: + export const GROQ_MODEL = 'openai/gpt-oss-20b';","label":"safe"}
+{"text":"Remove dead code path in installationSyncService","label":"safe"}
+{"text":"Add retry backoff note to sequence-webhook-to-review.md","label":"safe"}
+{"text":"Pin @prisma/client to 5.22 for Azure deploy stability","label":"safe"}
+{"text":"Small copy edit on the empty repositories dashboard card","label":"safe"}
+{"text":"Ensure markCompleted runs only after pipeline success in worker","label":"safe"}
+{"text":"Split long analyze_diff traces into triage + chunk child steps","label":"safe"}
+{"text":"Normalize author avatar URL when upserting Developer rows","label":"safe"}
+{"text":"Guard against empty formatted diffs when all files are skippable","label":"safe"}
+{"text":"Weekly digest: skip developers with digestEmailEnabled false","label":"safe"}
+{"text":"Typed ReviewJobPayload fields for title and body from webhook","label":"safe"}
+{"text":"Increase eslint max-warnings temporarily while cleaning legacy files","label":"safe"}
+{"text":"Document directUrl for Prisma migrate on Neon unpooled connection","label":"safe"}
+{"text":"Cache installation tokens with existing githubAuthService helper","label":"safe"}
+{"text":"Avoid posting duplicate summary when job marker already present","label":"safe"}
+{"text":"Lightweight CSS tweak for mobile job detail layout","label":"safe"}

@@ -28,6 +28,26 @@ const envSchema = z.object({
     .min(20, 'DIGEST_CRON_SECRET must be at least 20 characters'),
   AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
   WEB_APP_URL: z.string().url('WEB_APP_URL must be a valid URL'),
+  /** Pre-Groq injection gate. Default off so production is unchanged until dry-run. */
+  INJECTION_DEFENSE_ENABLED: z
+    .string()
+    .optional()
+    .default('false')
+    .transform((value) => value === 'true' || value === '1'),
+  /** Required when INJECTION_DEFENSE_ENABLED=true. */
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  INJECTION_BLOCK_THRESHOLD: z
+    .string()
+    .optional()
+    .default('0.55')
+    .transform((value) => Number.parseFloat(value))
+    .refine((n) => Number.isFinite(n) && n >= 0 && n <= 1, 'INJECTION_BLOCK_THRESHOLD must be 0..1'),
+  INJECTION_FLAG_THRESHOLD: z
+    .string()
+    .optional()
+    .default('0.42')
+    .transform((value) => Number.parseFloat(value))
+    .refine((n) => Number.isFinite(n) && n >= 0 && n <= 1, 'INJECTION_FLAG_THRESHOLD must be 0..1'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -40,6 +60,34 @@ if (!parsed.success) {
     formErrors: flattened.formErrors,
   };
   process.stderr.write(JSON.stringify(payload, null, 2) + '\n');
+  process.exit(1);
+}
+
+if (parsed.data.INJECTION_DEFENSE_ENABLED && !parsed.data.OPENAI_API_KEY) {
+  process.stderr.write(
+    JSON.stringify(
+      {
+        message: 'Environment validation failed',
+        formErrors: ['OPENAI_API_KEY is required when INJECTION_DEFENSE_ENABLED=true'],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+  process.exit(1);
+}
+
+if (parsed.data.INJECTION_FLAG_THRESHOLD > parsed.data.INJECTION_BLOCK_THRESHOLD) {
+  process.stderr.write(
+    JSON.stringify(
+      {
+        message: 'Environment validation failed',
+        formErrors: ['INJECTION_FLAG_THRESHOLD must be <= INJECTION_BLOCK_THRESHOLD'],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
   process.exit(1);
 }
 

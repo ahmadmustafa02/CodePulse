@@ -62,6 +62,7 @@ async function processReviewJob(job: Job<EnqueueReviewJobData>): Promise<void> {
   try {
     await reviewPipelineService.run({
       jobId: reviewJobId,
+      organizationId: record.organizationId,
       payload,
       tracer,
     });

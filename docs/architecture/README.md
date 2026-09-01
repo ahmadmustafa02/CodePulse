@@ -1,6 +1,6 @@
 # CodePulse architecture
 
-**Status:** Finalized (C4 L1/L2 + webhook->review sequence diagrams included, 2026-08-27). Diagrams use GitHub-native Mermaid `flowchart` / `sequenceDiagram` (verified with `@mermaid-js/mermaid-cli`). They reflect the **shipped** post-Phase 1-5 state; ADRs 001-005 remain the decision record. If a diagram and an ADR disagree, **code is source of truth**.
+**Status:** Finalized (C4 L1/L2 + webhook->review sequence diagrams included, 2026-08-27). Diagrams use GitHub-native Mermaid `flowchart` / `sequenceDiagram` (verified with `@mermaid-js/mermaid-cli`). They reflect the **shipped** post-Phase 1-5 state; ADRs 001-006 remain the decision record. If a diagram and an ADR disagree, **code is source of truth**.
 
 ## Diagrams
 
@@ -8,7 +8,7 @@
 |---|---|---|
 | [context-diagram.md](./context-diagram.md) | C4 Level 1 | System boundary vs GitHub, developer, Groq, Resend |
 | [container-diagram.md](./container-diagram.md) | C4 Level 2 | Web, API, worker, Neon, Redis, Resend, queue |
-| [sequence-webhook-to-review.md](./sequence-webhook-to-review.md) | Sequence | Review path, closed-PR lifecycle, retry/dead, refactor gate |
+| [sequence-webhook-to-review.md](./sequence-webhook-to-review.md) | Sequence | Review path, closed-PR lifecycle, retry/dead, refactor gate, injection scan |
 
 ## ADRs
 
@@ -19,6 +19,7 @@
 | [003](./adr/003-tenant-isolation-model.md) | Tenant = GitHub installation -> `organizationId` |
 | [004](./adr/004-refactor-pr-verification-gate.md) | Docker sandbox gate; `refactorPrEnabled` default OFF |
 | [005](./adr/005-why-groq-over-openai.md) | Production model `openai/gpt-oss-20b` |
+| [006](./adr/006-injection-defense-gate.md) | Pre-Groq embeddings gate; `INJECTION_DEFENSE_ENABLED` default OFF |
 
 ## Related ops notes
 

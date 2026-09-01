@@ -4,20 +4,23 @@ import { resolvePullRequestLifecycleState } from '../types/github';
 import type { ReviewJobPayload } from '../types/reviewJob';
 import type { PipelineTracer } from './traceService';
 import { hasCompletedStep } from './traceService';
+import { findDecisionForJob, scanUntrustedContent } from '../defense';
 import { databaseService } from './databaseService';
 import { githubCommentService } from './githubCommentService';
 import { githubDiffService } from './githubDiffService';
 import { groqAnalysisService } from './groqAnalysisService';
 import { refactorPrService } from './refactorPrService';
+import { formatDiffForPrompt } from '../utils/diffFormatter';
 import logger from '../utils/logger';
 
 export class ReviewPipelineService {
   async run(params: {
     jobId: string;
+    organizationId: string;
     payload: ReviewJobPayload;
     tracer: PipelineTracer;
   }): Promise<void> {
-    const { jobId, payload, tracer } = params;
+    const { jobId, organizationId, payload, tracer } = params;
     const {
       installationId,
       owner,
@@ -91,6 +94,48 @@ export class ReviewPipelineService {
       totalAdditions: diff.totalAdditions,
       totalDeletions: diff.totalDeletions,
     });
+
+    const gateResult = await this.runStepUnlessDone(
+      jobId,
+      'injection_scan',
+      tracer,
+      () =>
+        scanUntrustedContent({
+          title: payload.title,
+          body: payload.body,
+          filenames: diff.files.map((file) => file.filename),
+          formattedDiffPreview: formatDiffForPrompt(diff),
+          jobId,
+          organizationId,
+        }),
+      { filesChanged: diff.files.length },
+    );
+
+    const injectionOutcome =
+      gateResult?.outcome ??
+      (await findDecisionForJob(jobId))?.outcome ??
+      'allow';
+
+    if (injectionOutcome === 'block') {
+      await this.runStepUnlessDone(jobId, 'injection_block_comment', tracer, () =>
+        githubCommentService.postSecuritySkipComment({
+          installationId,
+          owner,
+          repo,
+          pullNumber,
+          jobId,
+        }),
+      );
+      logger.info('PR review blocked by injection defense', {
+        jobId,
+        deliveryId,
+        prNumber: pullNumber,
+        repo: `${owner}/${repo}`,
+        scoreMalicious: gateResult?.scoreMalicious,
+        decisionId: gateResult?.decisionId,
+      });
+      return;
+    }
 
     let analysisResult = await this.runStepUnlessDone(
       jobId,

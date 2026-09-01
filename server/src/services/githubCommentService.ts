@@ -162,6 +162,67 @@ export class GitHubCommentService {
     }
   }
 
+  /**
+   * Short PR comment when injection defense blocks analysis. Idempotent via job marker.
+   */
+  async postSecuritySkipComment(params: {
+    installationId: number;
+    owner: string;
+    repo: string;
+    pullNumber: number;
+    jobId: string;
+  }): Promise<void> {
+    const { installationId, owner, repo, pullNumber, jobId } = params;
+
+    try {
+      const token = await githubAuthService.getInstallationToken(installationId);
+      const octokit = new Octokit({ auth: token });
+
+      if (await this.hasPostedForJob(octokit, { owner, repo, pullNumber, jobId })) {
+        logger.info('Skipping security skip comment; job marker already present', {
+          owner,
+          repo,
+          pullNumber,
+          jobId,
+        });
+        return;
+      }
+
+      const marker = codePulseJobMarker(jobId);
+      const body = `## CodePulse review skipped
+
+This pull request was **not analyzed** because CodePulse detected suspected prompt-injection content in the PR title, description, or diff.
+
+If this looks like a false positive, rephrase the PR description and push a new commit, or contact your CodePulse admin.
+
+${marker}`;
+
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        body,
+      });
+
+      logger.info('Posted injection-defense skip comment', {
+        owner,
+        repo,
+        pullNumber,
+        jobId,
+      });
+    } catch (error) {
+      logger.error('Failed to post security skip comment', {
+        owner,
+        repo,
+        pullNumber,
+        jobId,
+        error: getErrorMessage(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  }
+
   private async hasPostedForJob(
     octokit: Octokit,
     params: { owner: string; repo: string; pullNumber: number; jobId: string },

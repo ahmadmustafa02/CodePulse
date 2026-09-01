@@ -1,7 +1,7 @@
 # Sequence - webhook to review (current pipeline)
 
 **Status:** Finalized  
-**Scope:** Shipped path after BullMQ + TraceEvent + Phase 4 refactor gate. Source of truth: `webhooks.ts`, `webhookProcessor`, `queue.ts`, `worker.ts`, `reviewPipelineService.ts`, ADR 001-004.
+**Scope:** Shipped path after BullMQ + TraceEvent + Phase 4 refactor gate + optional injection-defense gate (ADR 006). Source of truth: `webhooks.ts`, `webhookProcessor`, `queue.ts`, `worker.ts`, `reviewPipelineService.ts`, ADR 001-006.
 
 Constants: queue `codepulse-review`, `REVIEW_JOB_MAX_ATTEMPTS = 3`, backoff 5s exponential, worker concurrency 2. Org flag `refactorPrEnabled` defaults **OFF**.
 
@@ -42,20 +42,30 @@ sequenceDiagram
         end
         W->>GH: fetch_diff
         W->>DB: TraceEvent fetch_diff completed
-        W->>Groq: analyze_diff triage and chunks
-        W->>DB: TraceEvent analyze chunks
-        W->>GH: comment_post
-        W->>DB: TraceEvent comment_post
-        W->>DB: persist review
-        opt organization.refactorPrEnabled
-            W->>W: refactor_prs gate
+        W->>W: injection_scan defense gate
+        Note over W: skipped allow when flag off; else OpenAI embeddings
+        W->>DB: TraceEvent injection_scan + optional InjectionDecision
+        alt outcome block
+            W->>GH: short security skip comment
+            W->>DB: markCompleted
+        else allow or flag
+            W->>Groq: analyze_diff triage and chunks
+            W->>DB: TraceEvent analyze chunks
+            W->>GH: comment_post
+            W->>DB: TraceEvent comment_post
+            W->>DB: persist review
+            opt organization.refactorPrEnabled
+                W->>W: refactor_prs gate
+            end
+            W->>DB: markCompleted
         end
-        W->>DB: markCompleted
         Dev->>API: GET /jobs/:id/trace
         API->>DB: tenant-scoped TraceEvent list
         API-->>Dev: timeline likelyRootCause attempt
     end
 ```
+
+`injection_scan` always runs as a traced step. With `INJECTION_DEFENSE_ENABLED=false` (default) it no-ops as `allow` with `skipped: true` and does not call OpenAI (ADR 006).
 
 ## Closed / merged - lifecycle only (no review)
 
