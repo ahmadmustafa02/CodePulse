@@ -209,7 +209,13 @@ export class WebhookProcessor {
         result.job.id,
         error instanceof Error ? error.message : String(error),
       );
-      throw error;
+      logger.error('Failed to enqueue review job after DB insert', {
+        reviewJobId: result.job.id,
+        deliveryId: event.deliveryId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Do not rethrow — webhook already ACKed (or will); stranded queued rows are recoverable.
+      return;
     }
 
     logger.info('Review job created and enqueued', {

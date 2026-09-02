@@ -30,15 +30,33 @@ webhooksRouter.post(GITHUB_WEBHOOK_ROUTE, (req, res, next) => {
       });
 
       const event: WebhookEvent = { eventType, deliveryId, payload };
-      // Enqueue (or lifecycle sync) before ACK — no synchronous AI work here.
-      await webhookProcessor.process(event);
 
+      // ACK immediately so GitHub does not hit client timeout while Neon/Redis wake.
+      // Signature already verified; processing continues in-process after the response.
       res.status(HTTP_STATUS_ACCEPTED).json({
         success: true,
         data: { message: 'Webhook accepted', deliveryId },
       });
+
+      try {
+        await webhookProcessor.process(event);
+      } catch (error) {
+        logger.error('Webhook processing failed after ACK', {
+          deliveryId,
+          eventType,
+          action: payload.action,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      }
     } catch (error) {
-      next(error);
+      if (!res.headersSent) {
+        next(error);
+        return;
+      }
+      logger.error('Webhook handler failed after headers sent', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   })();
 });

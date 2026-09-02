@@ -13,6 +13,7 @@ function redisConnection() {
   return {
     url: env.REDIS_URL,
     maxRetriesPerRequest: null as null,
+    connectTimeout: 10_000,
   };
 }
 
