@@ -19,9 +19,7 @@ function redisConnection() {
   return {
     url: env.REDIS_URL,
     maxRetriesPerRequest: null as null,
-    // Fail fast on bad Upstash URLs instead of hanging until GitHub webhook timeout.
     connectTimeout: 10_000,
-    enableOfflineQueue: false,
   };
 }
 
