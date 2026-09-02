@@ -45,6 +45,17 @@ jobs:
         with:
           name: node-app
 
+      - name: Set up Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      # upload-artifact omits gitignored paths (node_modules). Reinstall before Azure zip deploy.
+      - name: Install production node_modules for deploy
+        run: |
+          npm ci --omit=dev
+          npx prisma generate
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -60,7 +71,7 @@ jobs:
           slot-name: 'Production'
           package: .
 
-  # Sibling App Service running `npm run worker` (startup command configured in Azure).
+  # Sibling App Service running `node dist/worker.js` (startup configured in Azure).
   # App: thecodepulse-worker — same artifact as API; required for review pipeline + injection gate.
   deploy-worker:
     runs-on: ubuntu-latest
@@ -73,6 +84,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
+
+      - name: Set up Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Install production node_modules for deploy
+        run: |
+          npm ci --omit=dev
+          npx prisma generate
 
       - name: Login to Azure
         uses: azure/login@v2
