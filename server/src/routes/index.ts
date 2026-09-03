@@ -6,6 +6,7 @@ import { authRouter } from './auth';
 import { digestRouter } from './digest';
 import { healthRouter } from './health';
 import { jobsRouter } from './jobs';
+import { securityRouter } from './security';
 import { statsRouter } from './stats';
 import { webhooksRouter } from './webhooks';
 
@@ -20,4 +21,5 @@ apiRouter.use('/health', jsonParser, healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/digest', jsonParser, digestRouter);
 apiRouter.use(jsonParser, jobsRouter);
+apiRouter.use(jsonParser, securityRouter);
 apiRouter.use(statsRouter);

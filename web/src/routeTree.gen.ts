@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SecurityRouteImport } from './routes/security'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
@@ -22,6 +23,11 @@ import { Route as ReposOwnerRepoRouteImport } from './routes/repos.$owner.$repo'
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/login': typeof LoginRoute
+  '/security': typeof SecurityRoute
   '/settings': typeof SettingsRoute
   '/developers/$id': typeof DevelopersIdRoute
   '/repos/$owner/$repo': typeof ReposOwnerRepoRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/jobs': typeof JobsRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/login': typeof LoginRoute
+  '/security': typeof SecurityRoute
   '/settings': typeof SettingsRoute
   '/developers/$id': typeof DevelopersIdRoute
   '/repos/$owner/$repo': typeof ReposOwnerRepoRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/login': typeof LoginRoute
+  '/security': typeof SecurityRoute
   '/settings': typeof SettingsRoute
   '/developers/$id': typeof DevelopersIdRoute
   '/repos/$owner/$repo': typeof ReposOwnerRepoRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/jobs/$jobId'
     | '/login'
+    | '/security'
     | '/settings'
     | '/developers/$id'
     | '/repos/$owner/$repo'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/jobs/$jobId'
     | '/login'
+    | '/security'
     | '/settings'
     | '/developers/$id'
     | '/repos/$owner/$repo'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/jobs/$jobId'
     | '/login'
+    | '/security'
     | '/settings'
     | '/developers/$id'
     | '/repos/$owner/$repo'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRoute
   JobsJobIdRoute: typeof JobsJobIdRoute
   LoginRoute: typeof LoginRoute
+  SecurityRoute: typeof SecurityRoute
   SettingsRoute: typeof SettingsRoute
   DevelopersIdRoute: typeof DevelopersIdRoute
   ReposOwnerRepoRoute: typeof ReposOwnerRepoRoute
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRoute,
   JobsJobIdRoute: JobsJobIdRoute,
   LoginRoute: LoginRoute,
+  SecurityRoute: SecurityRoute,
   SettingsRoute: SettingsRoute,
   DevelopersIdRoute: DevelopersIdRoute,
   ReposOwnerRepoRoute: ReposOwnerRepoRoute,

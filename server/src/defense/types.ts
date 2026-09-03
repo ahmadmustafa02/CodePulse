@@ -25,6 +25,8 @@ export type ScanUntrustedContentInput = {
   organizationId: string;
   /** GitHub App installation id — used for test-only allowlisting. */
   installationId?: number;
+  /** When true, skip InjectionDecision write (eval harness / dry runs). */
+  skipPersist?: boolean;
 };
 
 export type InjectionGateResult = {
@@ -47,6 +49,23 @@ export type CentroidArtifact = {
     malicious: number[];
     safe: number[];
   };
+  recommendedThresholds: {
+    block: number;
+    flag: number;
+  };
+};
+
+/** Phase 1.5: logistic regression on the same embedding space. */
+export type LogisticArtifact = {
+  version: 1;
+  kind: 'logistic';
+  model: string;
+  dimensions: number;
+  builtAt: string;
+  exampleCounts: { malicious: number; safe: number };
+  weights: number[];
+  bias: number;
+  trainMetrics?: { accuracy: number; loss: number };
   recommendedThresholds: {
     block: number;
     flag: number;

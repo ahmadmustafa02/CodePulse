@@ -1,5 +1,5 @@
 /**
- * Offline: embed labeled dataset examples and write mean centroids per class.
+ * Offline: embed labeled dataset, write mean centroids + logistic regression weights.
  *
  * Usage (from server/): npm run defense:build-classifier
  * Requires OPENAI_API_KEY. Does not load the full app env schema.
@@ -9,12 +9,18 @@ import { config as loadEnv } from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import OpenAI from 'openai';
+import {
+  fitLogisticRegression,
+  predictProbability,
+  recommendProbabilityThresholds,
+} from '../logistic';
 
-loadEnv();
+loadEnv({ override: true });
 
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const DATASET_DIR = path.join(__dirname, '..', 'dataset');
-const ARTIFACT_PATH = path.join(__dirname, '..', 'artifacts', 'centroids.json');
+const CENTROIDS_PATH = path.join(__dirname, '..', 'artifacts', 'centroids.json');
+const LOGISTIC_PATH = path.join(__dirname, '..', 'artifacts', 'logistic.json');
 
 type Label = 'malicious' | 'safe';
 
@@ -85,7 +91,7 @@ async function embedAll(client: OpenAI, texts: string[]): Promise<number[][]> {
 async function main(): Promise<void> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is required to build centroids');
+    throw new Error('OPENAI_API_KEY is required to build classifier artifacts');
   }
 
   const files = [
@@ -118,28 +124,63 @@ async function main(): Promise<void> {
     safe.map((e) => e.text),
   );
 
-  const artifact = {
+  const allVectors = [...maliciousVectors, ...safeVectors];
+  const labels = [
+    ...maliciousVectors.map(() => 1),
+    ...safeVectors.map(() => 0),
+  ];
+
+  const fitted = fitLogisticRegression(allVectors, labels);
+  const probs = allVectors.map((v) =>
+    predictProbability(v, { weights: fitted.weights, bias: fitted.bias }),
+  );
+  const recommended = recommendProbabilityThresholds(probs, labels);
+
+  const builtAt = new Date().toISOString();
+  const exampleCounts = { malicious: malicious.length, safe: safe.length };
+
+  const centroidsArtifact = {
     version: 1 as const,
     model: EMBEDDING_MODEL,
     dimensions: maliciousVectors[0].length,
-    builtAt: new Date().toISOString(),
-    exampleCounts: { malicious: malicious.length, safe: safe.length },
+    builtAt,
+    exampleCounts,
     centroids: {
       malicious: meanVector(maliciousVectors),
       safe: meanVector(safeVectors),
     },
     recommendedThresholds: {
-      // Conservative defaults; tune after dry-run against real PRs.
+      // Cosine-space legacy defaults (kept for fallback scorer).
       block: 0.55,
       flag: 0.42,
     },
   };
 
-  fs.mkdirSync(path.dirname(ARTIFACT_PATH), { recursive: true });
-  fs.writeFileSync(ARTIFACT_PATH, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
-  process.stdout.write(`Wrote ${ARTIFACT_PATH}\n`);
+  const logisticArtifact = {
+    version: 1 as const,
+    kind: 'logistic' as const,
+    model: EMBEDDING_MODEL,
+    dimensions: maliciousVectors[0].length,
+    builtAt,
+    exampleCounts,
+    weights: fitted.weights,
+    bias: fitted.bias,
+    trainMetrics: {
+      accuracy: fitted.trainAccuracy,
+      loss: fitted.trainLoss,
+    },
+    recommendedThresholds: recommended,
+  };
+
+  fs.mkdirSync(path.dirname(CENTROIDS_PATH), { recursive: true });
+  fs.writeFileSync(CENTROIDS_PATH, `${JSON.stringify(centroidsArtifact, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(LOGISTIC_PATH, `${JSON.stringify(logisticArtifact, null, 2)}\n`, 'utf8');
+
+  process.stdout.write(`Wrote ${CENTROIDS_PATH}\n`);
+  process.stdout.write(`Wrote ${LOGISTIC_PATH}\n`);
   process.stdout.write(
-    `dims=${artifact.dimensions} recommended block=${artifact.recommendedThresholds.block} flag=${artifact.recommendedThresholds.flag}\n`,
+    `logistic trainAcc=${fitted.trainAccuracy.toFixed(3)} loss=${fitted.trainLoss.toFixed(4)} ` +
+      `recommended block=${recommended.block} flag=${recommended.flag}\n`,
   );
 }
 

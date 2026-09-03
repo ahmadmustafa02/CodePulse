@@ -126,3 +126,32 @@ export type JobsOverview = {
   };
   jobs: ReviewJobItem[];
 };
+
+export type SecurityOverview = {
+  installed: boolean;
+  live: {
+    windowDays?: number;
+    total: number;
+    byOutcome: { allow: number; flag: number; block: number };
+    recent: Array<{
+      id: string;
+      outcome: string;
+      scoreMalicious: number;
+      scoreSafe: number;
+      model: string;
+      createdAt: string;
+      reviewJobId: string;
+    }>;
+  };
+  evalHarness: {
+    version: number;
+    ranAt: string;
+    summary: {
+      total: number;
+      caught: number;
+      missed: number;
+      catchRate: number;
+    };
+    byCategory: Record<string, { total: number; caught: number; catchRate: number }>;
+  } | null;
+};
