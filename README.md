@@ -20,7 +20,7 @@
 
 ---
 
-**CodePulse** is an end-to-end AI code-review system for GitHub pull requests. It verifies webhooks, analyzes diffs with structured LLM tool-calling, posts exact-line review comments, persists findings for analytics, and ships an offline evaluation harness for prompt/model regression checks. It is designed as a production-style research system—not a thin chatbot wrapper around a model API.
+**CodePulse** is an end-to-end AI code-review system for GitHub pull requests. It verifies webhooks, enqueues durable review jobs, analyzes diffs with structured LLM tool-calling, posts exact-line review comments, and persists findings for analytics. A pre-Groq **injection-defense gate** scans untrusted PR content; an adversarial eval harness and `/security` dashboard measure catch rates. Separate offline eval under `server/eval/` tracks review-model quality. It is designed as a production-style system—not a thin chatbot wrapper around a model API.
 
 <div align="center">
 
@@ -41,8 +41,12 @@
 | Capability | What it provides |
 |---|---|
 | Automated PR reviews | Reviews on `opened`, `synchronize`, and `reopened` |
+| Async queue + worker | BullMQ/Redis jobs; API acknowledges fast; worker runs the pipeline |
 | Structured LLM analysis | Two-pass triage + chunked review via `GroqAnalysisService.analyzeDiff()` |
 | Exact-line GitHub comments | Inline findings with category, severity, explanation, and suggestion |
+| Injection defense | Pre-Groq gate on PR title/body/filenames/diff — allow / flag / block |
+| Adversarial security eval | Taxonomy runner + catch/miss metrics; `/security` dashboard |
+| Jobs + Trace Viewer | `/jobs` queue health and per-job step timeline (`TraceEvent`) |
 | Multi-tenant isolation | Data scoped to each GitHub App installation |
 | Installation authorization | Users can link only installations they can access on GitHub |
 | HMAC webhook verification | Every delivery verified with HMAC-SHA256 |
@@ -50,8 +54,8 @@
 | Lifecycle tracking | Persists `open`, `closed`, and `merged` from GitHub payloads |
 | Developer / repo analytics | Findings stored for dashboard charts and history |
 | Weekly digest | Opt-in Resend email summarizing recent issue categories and file hotspots |
-| Offline evaluation | Labeled TypeScript benchmark for prompt/model regression |
-| Production deployment | Vercel frontend, Azure API, Neon PostgreSQL, GitHub Actions digest cron |
+| Offline review evaluation | Labeled TypeScript benchmark for prompt/model regression (`server/eval/`) |
+| Production deployment | Vercel frontend, Azure API + worker, Neon, Upstash Redis, digest cron |
 
 Analytics reflect historical findings per developer and repository. CodePulse does **not** fine-tune or retrain a model from team data.
 
@@ -60,13 +64,16 @@ Analytics reflect historical findings per developer and repository. CodePulse do
 ## How it works
 
 1. A GitHub App webhook delivers a pull-request event.
-2. The API verifies the HMAC signature, inserts a `ReviewJob` (unique on repo + PR + head SHA), enqueues it on BullMQ/Redis, and returns **202 Accepted**.
-3. A separate **worker** process consumes the queue: fetch/parse diff → Groq triage + chunked analysis → GitHub comments → Postgres.
-4. Failed jobs retry with exponential backoff (3 attempts) then land in a dead-letter (`dead`) status, visible on the **Jobs** dashboard.
-5. Each pipeline step emits a `TraceEvent` for later Trace Viewer work.
-6. The dashboard surfaces installation-scoped analytics; opt-in weekly digests are emailed via Resend.
+2. The API verifies the HMAC signature, returns **202 Accepted** quickly (ACK before heavy Neon/Redis work where configured), inserts a `ReviewJob` (unique on repo + PR + head SHA), and enqueues it on BullMQ/Redis.
+3. A separate **worker** consumes the queue:
+   - fetch/parse diff  
+   - **`injection_scan`** (optional, flag-gated) — OpenAI embeddings + logistic classifier; **block** skips Groq and posts a short security skip comment  
+   - Groq triage + chunked analysis → GitHub comments → Postgres  
+4. Failed jobs retry with exponential backoff (3 attempts) then land in `dead`, visible on **Jobs**.
+5. Each pipeline step emits a `TraceEvent` (Trace Viewer on `/jobs/:id`).
+6. Dashboard analytics + opt-in weekly digests (Resend). Security overview on **`/security`**.
 
-The production analysis prompt is the **first evidence-based refinement** (higher precision at 100% recall on the offline v1 suite). A second experimental prompt was evaluated and **reverted**; it is not the production configuration. See Evaluation for a v2 precision-gap diagnosis (prompt drift on `main` was found and restored).
+The production analysis prompt is the **first evidence-based refinement** (see Evaluation). A second experimental prompt was tried and **reverted**.
 
 ---
 
@@ -82,17 +89,19 @@ GitHub webhook + HMAC-SHA256 verification
 API (enqueue only)
   • action routing (review vs lifecycle-only)
   • ReviewJob insert + @@unique(repoId, prNumber, headSha)
-  • BullMQ enqueue → 202 Accepted
+  • BullMQ enqueue → 202 Accepted (fast ACK)
         │
         ▼
 Worker process (BullMQ consumer)
   • fetch/parse diff
+  • injection_scan (flag + allowlist) → allow | flag | block
   • Groq triage → chunked review → Zod-validated findings
+      (skipped on block)
   • GitHub review comments + PostgreSQL persistence
   • TraceEvent per step · retries → dead letter
         │
         ▼
-Dashboard / Jobs / Digest APIs
+Dashboard / Jobs / Security / Digest APIs
         │
         ▼
 Resend weekly email (opt-in)
@@ -100,7 +109,22 @@ Resend weekly email (opt-in)
 
 Webhooks target the **Azure API host** directly. The **Vercel** frontend proxies `/api/v1/*` to the backend so session cookies remain same-origin.
 
-**Processes:** API App Service (`thecodepulse`) + Worker App Service (`thecodepulse-worker`, startup `npm run worker`) + Redis + Neon Postgres.
+**Processes:** API App Service (`thecodepulse`) + Worker App Service (`thecodepulse-worker`, startup `node dist/worker.js` or `npm run worker`) + Redis (e.g. Upstash `rediss://`) + Neon Postgres.
+
+### Injection defense & security eval
+
+| Piece | Location / notes |
+|---|---|
+| Gate module | `server/src/defense/` — embeddings (`text-embedding-3-small`) + **logistic** scorer (`artifacts/logistic.json`); centroids fallback |
+| Pipeline step | `injection_scan` after `fetch_diff`, before `analyze_diff` |
+| Outcomes | `allow` / `flag` (continue) / `block` (skip Groq; security skip comment; `InjectionDecision`) |
+| Flags | `INJECTION_DEFENSE_ENABLED` (default off); optional installation allowlist for test rollout |
+| Rebuild classifier | `npm run defense:build-classifier` (needs `OPENAI_API_KEY`) |
+| Adversarial harness | `server/src/eval-harness/` — `npm run eval-harness:run` → catch/miss by category |
+| UI | `/security` — live decisions + last harness results |
+| ADR | [`docs/architecture/adr/006-injection-defense-gate.md`](docs/architecture/adr/006-injection-defense-gate.md) |
+
+Separate from review-model eval in `server/eval/` (Groq precision/recall on labeled diffs).
 
 ### Optional refactor PRs (Phase 4, org flag OFF by default)
 For maintainability findings (`code-quality`, `best-practices`) only, an org may opt in to a **second** verified PR:
@@ -125,7 +149,7 @@ See [`docs/architecture/adr/004-refactor-pr-verification-gate.md`](docs/architec
 - HMAC-SHA256 signature verification on every delivery.
 - Review pipeline actions: `opened`, `synchronize`, `reopened`.
 - `closed` (including merges) updates lifecycle state without running another AI review.
-- Response code: **202 Accepted** after enqueue (or idempotent duplicate).
+- Response code: **202 Accepted** after enqueue (or idempotent duplicate); ACK is prioritized so GitHub does not hit delivery deadlines.
 - Idempotency: Postgres `UNIQUE (repoId, prNumber, headSha)` on `ReviewJob` — not check-then-insert.
 - Worker retries 3× with exponential backoff; permanent failures → `dead` (visible on `/jobs`).
 
@@ -170,13 +194,22 @@ npm run worker:dev   # BullMQ consumer
 |---|---|
 | Tenant definition | GitHub App installation → Organization |
 | Enforcement point | `server/src/services/tenantRepository.ts` |
-| Scoped models | Repository, PullRequest, Issue, Developer, ReviewJob, TraceEvent |
+| Scoped models | Repository, PullRequest, Issue, Developer, ReviewJob, TraceEvent, InjectionDecision |
 | Test coverage | `npm run test:isolation` (2 seeded installations, cross-tenant null/empty assertions) |
 | Acceptance fixtures | `npm run cleanup:acceptance` removes Phase 1 fake-install test rows |
 
 ---
 
 ## Evaluation
+
+Two separate evaluation tracks:
+
+| Track | Path | Purpose |
+|---|---|---|
+| Review quality | `server/eval/` | Groq precision/recall on labeled TypeScript diffs |
+| Injection defense | `server/src/eval-harness/` | Catch/miss on adversarial taxonomy (`npm run eval-harness:run`) |
+
+### Review quality (`server/eval/`)
 
 Offline benchmark under `server/eval/` (dataset + runner). Production analysis model: **`openai/gpt-oss-20b`**. Comparison runs can set `EVAL_COMPARE_MODEL` (e.g. `openai/gpt-oss-120b`) for side-by-side checks.
 
@@ -251,6 +284,16 @@ Generated reports under `server/eval/results/` (`latest.json`, `latest-<model>.m
 
 **Limitations / future work:** Even at 50 cases this remains a focused TypeScript detection suite—useful for regression and prompt/model iteration, not statistically conclusive production proof. A **40% clean-case false-positive rate** is still high on its own terms and is the biggest opportunity for further prompt refinement (same framing as the original baseline→refined prompt work).
 
+### Injection defense harness (`server/src/eval-harness/`)
+
+```bash
+cd server
+npm run defense:build-classifier   # rebuild logistic + centroids (OPENAI_API_KEY)
+npm run eval-harness:run           # taxonomy catch/miss → results/latest.json
+```
+
+See [`server/src/eval-harness/README.md`](server/src/eval-harness/README.md). Dashboard: **`/security`**.
+
 ### Database migrations (Neon)
 
 Never `prisma db push` against shared/prod Neon. Generate reviewable SQL (`migrate dev --create-only` or hand-authored files), read for unexpected DROPs, then `migrate deploy`. See [`docs/architecture/neon-migration-process.md`](docs/architecture/neon-migration-process.md) — same rule for LabCrew.
@@ -261,9 +304,9 @@ Never `prisma db push` against shared/prod Neon. Generate reviewable SQL (`migra
 
 | Layer | Technologies |
 |---|---|
-| Backend | TypeScript, Node.js, Express, Prisma, PostgreSQL (Neon), Groq, Octokit, Resend |
+| Backend | TypeScript, Node.js, Express, Prisma, PostgreSQL (Neon), Groq, OpenAI embeddings, BullMQ, Octokit, Resend |
 | Frontend | TypeScript, React, TanStack Router, Tailwind CSS, Recharts |
-| Platform | GitHub App, GitHub OAuth, GitHub Actions, Azure App Service, Vercel |
+| Platform | GitHub App, GitHub OAuth, GitHub Actions, Azure App Service (API + worker), Vercel, Redis |
 
 ---
 
@@ -274,6 +317,8 @@ Never `prisma db push` against shared/prod Neon. Generate reviewable SQL (`migra
 | **Dashboard** (`/dashboard`) | Installation-wide stats, recent reviews, connected repositories |
 | **Repositories** (`/repos/{owner}/{repo}`) | Single-repo health, severity trends, PR list |
 | **Developers** | Per-developer issue trends (recent window) |
+| **Jobs** (`/jobs`) | Queue counts, recent ReviewJobs, Trace Viewer per job |
+| **Security** (`/security`) | Injection decisions + eval-harness catch rates |
 | **Weekly digest** (`/digest`) | Digest preview and email opt-in |
 
 ---
@@ -282,10 +327,12 @@ Never `prisma db push` against shared/prod Neon. Generate reviewable SQL (`migra
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js **20+** (22 recommended; matches Azure/CI)
 - PostgreSQL ([Neon](https://neon.tech) works well)
+- Redis (Docker Compose on `:6380`, or Upstash for cloud)
 - GitHub App + OAuth App ([GitHub Apps docs](https://docs.github.com/en/apps/creating-github-apps))
 - Groq API key ([console.groq.com](https://console.groq.com))
+- OpenAI API key if enabling injection defense ([platform.openai.com](https://platform.openai.com))
 - Resend API key ([resend.com](https://resend.com)) for weekly digests
 
 ### 1. Clone & install
@@ -341,11 +388,11 @@ Post-install callback (production example):
 
 ### 5. Verify PR review locally
 
-1. Sign in at `http://localhost:8080`.
-2. Install the GitHub App on a test repository.
-3. Confirm repositories appear on the dashboard.
+1. `docker compose up -d` and set `REDIS_URL`.
+2. Run **API** (`npm run dev`) and **worker** (`npm run worker:dev`).
+3. Sign in at `http://localhost:8080` and install the GitHub App on a test repo.
 4. Open a PR with a real code change (not only lockfiles).
-5. Expect inline review comments within a few minutes.
+5. Expect inline review comments within a few minutes; check `/jobs` for status/traces.
 6. Refresh the dashboard — the PR should appear under recent reviews.
 
 Debug deliveries: GitHub → App → Advanced → Recent Deliveries (look for accepted responses).
@@ -371,7 +418,11 @@ curl -X POST https://your-api-host/api/v1/digest/trigger \
 ### 7. Evaluation
 
 ```bash
+# Review-model quality (Groq)
 cd server && npm run eval:offline
+
+# Injection-defense catch rates (OpenAI embeddings)
+cd server && npm run eval-harness:run
 ```
 
 ---
@@ -391,12 +442,17 @@ cd server && npm run eval:offline
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret |
 | `GITHUB_OAUTH_CALLBACK_URL` | Must match OAuth app callback exactly |
 | `GROQ_API_KEY` | Groq API key |
-| `REDIS_URL` | BullMQ Redis URL (local default `redis://127.0.0.1:6380`) |
+| `REDIS_URL` | BullMQ Redis URL (local default `redis://127.0.0.1:6380`; production often `rediss://…`) |
 | `AUTH_SECRET` | Session JWT signing secret (min 32 chars) |
 | `WEB_APP_URL` | Frontend origin for CORS and redirects |
 | `RESEND_API_KEY` | Resend API key |
 | `DIGEST_FROM_EMAIL` | Sender address for digest emails |
 | `DIGEST_CRON_SECRET` | Protects `POST /api/v1/digest/trigger` (min 20 chars) |
+| `INJECTION_DEFENSE_ENABLED` | `true` to run pre-Groq injection gate (default `false`) |
+| `OPENAI_API_KEY` | Required when injection defense is enabled (embeddings) |
+| `INJECTION_DEFENSE_INSTALLATION_ALLOWLIST` | Optional comma-separated GitHub App installation IDs for test-only rollout |
+| `INJECTION_BLOCK_THRESHOLD` | Malicious score ≥ this → block (default `0.7`; set on **worker**) |
+| `INJECTION_FLAG_THRESHOLD` | Malicious score ≥ this → flag (default `0.35`; set on **worker**) |
 
 </details>
 
@@ -428,13 +484,16 @@ cd server && npm run eval:offline
 npm run dev         # nodemon + ts-node (API)
 npm run worker:dev  # BullMQ worker
 npm run worker      # production worker (dist/)
-npm run build       # compile TypeScript
+npm run build       # compile TypeScript (+ copy defense/eval-harness artifacts)
 npm run start       # node dist/index.js
 npm run typecheck
 npm run lint
 npm run eval:smoke     # dataset + diff parse (no Groq)
 npm run eval:offline   # offline review benchmark
 npm run eval:compare   # production model vs EVAL_COMPARE_MODEL
+npm run defense:build-classifier  # rebuild logistic + centroids
+npm run defense:smoke             # quick scorer smoke
+npm run eval-harness:run          # adversarial injection catch rates
 
 # Root
 docker compose up -d   # Redis :6380
@@ -453,22 +512,24 @@ npm run lint
 |---|---|
 | Frontend | Vercel |
 | API | Azure App Service (`thecodepulse`) |
-| Worker | Azure App Service (`thecodepulse-worker`, startup `npm run worker`) |
-| Queue | Redis (`REDIS_URL`) |
+| Worker | Azure App Service (`thecodepulse-worker`, startup `node dist/worker.js`) |
+| Queue | Redis / Upstash (`REDIS_URL`, TLS `rediss://` in cloud) |
 | Database | Neon PostgreSQL |
 | Weekly digest cron | GitHub Actions ([`weekly-digest.yml`](.github/workflows/weekly-digest.yml)) |
 
-See ADRs: [`docs/architecture/adr/001-why-bullmq-over-sync.md`](docs/architecture/adr/001-why-bullmq-over-sync.md), [`docs/architecture/adr/002-headsha-idempotency.md`](docs/architecture/adr/002-headsha-idempotency.md).
+See ADRs: [`001`](docs/architecture/adr/001-why-bullmq-over-sync.md), [`002`](docs/architecture/adr/002-headsha-idempotency.md), [`006`](docs/architecture/adr/006-injection-defense-gate.md) (injection defense).
 
-GitHub webhooks must point to the **API host**, not the Vercel frontend URL.
+GitHub webhooks must point to the **API host**, not the Vercel frontend URL. Injection thresholds and `OPENAI_API_KEY` for the gate belong on the **worker** app.
 
 ---
 
 ## Limitations & future work
 
-- The offline evaluation set is **50** labeled TypeScript diffs (v2; was 20 in v1).
-- The benchmark focuses on TypeScript and issue *detection*, not large-scale developer acceptance of suggested fixes.
-- Broader real-world PR corpora, additional model comparisons, and fix-acceptance metrics are natural next research/engineering extensions.
+- The offline review eval set is **50** labeled TypeScript diffs (v2; was 20 in v1).
+- Review benchmark focuses on TypeScript detection, not large-scale acceptance of suggested fixes.
+- Injection defense defaults **off** and may use an installation **allowlist** during rollout; tune thresholds from live `InjectionDecision` data.
+- Optional LLM-as-judge for the adversarial harness is reserved/not implemented.
+- Sandbox/IMDS hardening for refactor PRs is strongest on hosts with Docker/iptables (limited on plain App Service).
 
 These are scope boundaries for the current system, not blockers for the production review pipeline described above.
 
@@ -476,7 +537,7 @@ These are scope boundaries for the current system, not blockers for the producti
 
 <div align="center">
 
-**CodePulse** — structured AI review for GitHub, with persistence, security controls, and measurable evaluation.
+**CodePulse** — structured AI review for GitHub, with async workers, injection defense, persistence, and measurable evaluation.
 
 [Live App](https://getcodepulse.vercel.app) · [Issues](https://github.com/ahmadmustafa02/CodePulse/issues) · [Repository](https://github.com/ahmadmustafa02/CodePulse)
 
