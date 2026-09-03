@@ -1,8 +1,12 @@
-/** Nearest-centroid scorer: cosine similarity to malicious vs safe class means. */
+/**
+ * Injection scorer: Phase 1.5 logistic regression on embeddings when
+ * artifacts/logistic.json is present; otherwise nearest-centroid fallback.
+ */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { CentroidArtifact, InjectionOutcome } from './types';
+import { predictProbability } from './logistic';
+import type { CentroidArtifact, InjectionOutcome, LogisticArtifact } from './types';
 import { EMBEDDING_MODEL, getBlockThreshold, getFlagThreshold } from './thresholds';
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -24,45 +28,85 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / denom;
 }
 
-let cachedArtifact: CentroidArtifact | null = null;
+let cachedLogistic: LogisticArtifact | null | undefined;
+let cachedCentroids: CentroidArtifact | null = null;
 
-function resolveCentroidsPath(): string {
-  const candidates = [
-    path.join(__dirname, 'artifacts', 'centroids.json'),
-    path.join(process.cwd(), 'src', 'defense', 'artifacts', 'centroids.json'),
-    path.join(process.cwd(), 'dist', 'defense', 'artifacts', 'centroids.json'),
+function candidatePaths(fileName: string): string[] {
+  return [
+    path.join(__dirname, 'artifacts', fileName),
+    path.join(process.cwd(), 'src', 'defense', 'artifacts', fileName),
+    path.join(process.cwd(), 'dist', 'defense', 'artifacts', fileName),
   ];
-  for (const candidate of candidates) {
+}
+
+function resolveExisting(fileName: string): string | null {
+  for (const candidate of candidatePaths(fileName)) {
     if (fs.existsSync(candidate)) {
       return candidate;
     }
   }
-  throw new Error(
-    `Missing centroids artifact (looked in ${candidates.join(', ')}). Run: npm run defense:build-classifier`,
-  );
+  return null;
+}
+
+export function loadLogistic(): LogisticArtifact | null {
+  if (cachedLogistic !== undefined) {
+    return cachedLogistic;
+  }
+  const filePath = resolveExisting('logistic.json');
+  if (!filePath) {
+    cachedLogistic = null;
+    return null;
+  }
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as LogisticArtifact;
+  if (
+    parsed.version !== 1 ||
+    parsed.kind !== 'logistic' ||
+    !Array.isArray(parsed.weights) ||
+    typeof parsed.bias !== 'number'
+  ) {
+    throw new Error(`Invalid logistic artifact at ${filePath}`);
+  }
+  cachedLogistic = parsed;
+  return parsed;
 }
 
 export function loadCentroids(): CentroidArtifact {
-  if (cachedArtifact) {
-    return cachedArtifact;
+  if (cachedCentroids) {
+    return cachedCentroids;
   }
-  const filePath = resolveCentroidsPath();
-  if (!fs.existsSync(filePath)) {
+  const filePath = resolveExisting('centroids.json');
+  if (!filePath) {
     throw new Error(
-      `Missing centroids artifact at ${filePath}. Run: npm run defense:build-classifier`,
+      `Missing centroids artifact (looked in ${candidatePaths('centroids.json').join(', ')}). Run: npm run defense:build-classifier`,
     );
   }
   const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as CentroidArtifact;
   if (parsed.version !== 1 || !parsed.centroids?.malicious || !parsed.centroids?.safe) {
     throw new Error(`Invalid centroids artifact at ${filePath}`);
   }
-  cachedArtifact = parsed;
+  cachedCentroids = parsed;
   return parsed;
 }
 
-/** Test helper: inject centroids without reading disk. */
+/** Test helper: inject artifacts without reading disk. */
+export function setArtifactsForTests(params: {
+  logistic?: LogisticArtifact | null;
+  centroids?: CentroidArtifact | null;
+}): void {
+  if ('logistic' in params) {
+    cachedLogistic = params.logistic;
+  }
+  if ('centroids' in params) {
+    cachedCentroids = params.centroids ?? null;
+  }
+}
+
+/** @deprecated Prefer setArtifactsForTests — kept for older smoke helpers. */
 export function setCentroidsForTests(artifact: CentroidArtifact | null): void {
-  cachedArtifact = artifact;
+  cachedCentroids = artifact;
+  if (artifact === null) {
+    cachedLogistic = null;
+  }
 }
 
 export type ScoreResult = {
@@ -70,28 +114,46 @@ export type ScoreResult = {
   scoreSafe: number;
   outcome: InjectionOutcome;
   model: string;
+  classifier: 'logistic' | 'centroid';
 };
 
+function outcomeFromMaliciousScore(scoreMalicious: number): InjectionOutcome {
+  const blockThreshold = getBlockThreshold();
+  const flagThreshold = getFlagThreshold();
+  if (scoreMalicious >= blockThreshold) {
+    return 'block';
+  }
+  if (scoreMalicious >= flagThreshold) {
+    return 'flag';
+  }
+  return 'allow';
+}
+
 export function scoreEmbedding(embedding: number[]): ScoreResult {
+  const logistic = loadLogistic();
+  if (logistic) {
+    const scoreMalicious = predictProbability(embedding, {
+      weights: logistic.weights,
+      bias: logistic.bias,
+    });
+    return {
+      scoreMalicious,
+      scoreSafe: 1 - scoreMalicious,
+      outcome: outcomeFromMaliciousScore(scoreMalicious),
+      model: `${logistic.model}+logistic`,
+      classifier: 'logistic',
+    };
+  }
+
   const artifact = loadCentroids();
   const scoreMalicious = cosineSimilarity(embedding, artifact.centroids.malicious);
   const scoreSafe = cosineSimilarity(embedding, artifact.centroids.safe);
-
-  const blockThreshold = getBlockThreshold();
-  const flagThreshold = getFlagThreshold();
-
-  let outcome: InjectionOutcome = 'allow';
-  if (scoreMalicious >= blockThreshold) {
-    outcome = 'block';
-  } else if (scoreMalicious >= flagThreshold) {
-    outcome = 'flag';
-  }
-
   return {
     scoreMalicious,
     scoreSafe,
-    outcome,
+    outcome: outcomeFromMaliciousScore(scoreMalicious),
     model: artifact.model || EMBEDDING_MODEL,
+    classifier: 'centroid',
   };
 }
 

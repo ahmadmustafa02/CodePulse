@@ -1,6 +1,6 @@
 /**
- * Smoke-check nearest-centroid scorer against fixture strings (no OpenAI at score time).
- * Requires artifacts/centroids.json from defense:build-classifier.
+ * Smoke-check scorer (logistic when present, else centroids) against fixture strings.
+ * Requires artifacts from defense:build-classifier.
  *
  * Usage: npx ts-node src/defense/scripts/smokeScorer.ts
  */
@@ -9,7 +9,7 @@ import { config as loadEnv } from 'dotenv';
 import { embedText } from '../embedder';
 import { scoreEmbedding } from '../scorer';
 
-loadEnv();
+loadEnv({ override: true });
 
 async function main(): Promise<void> {
   if (!process.env.OPENAI_API_KEY) {

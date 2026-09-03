@@ -56,13 +56,13 @@ const envSchema = z.object({
   INJECTION_BLOCK_THRESHOLD: z
     .string()
     .optional()
-    .default('0.55')
+    .default('0.7')
     .transform((value) => Number.parseFloat(value))
     .refine((n) => Number.isFinite(n) && n >= 0 && n <= 1, 'INJECTION_BLOCK_THRESHOLD must be 0..1'),
   INJECTION_FLAG_THRESHOLD: z
     .string()
     .optional()
-    .default('0.42')
+    .default('0.35')
     .transform((value) => Number.parseFloat(value))
     .refine((n) => Number.isFinite(n) && n >= 0 && n <= 1, 'INJECTION_FLAG_THRESHOLD must be 0..1'),
 });

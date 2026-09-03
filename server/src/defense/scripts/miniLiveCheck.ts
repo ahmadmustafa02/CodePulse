@@ -5,7 +5,7 @@
 
 import { config as loadEnv } from 'dotenv';
 
-loadEnv();
+loadEnv({ override: true });
 process.env.INJECTION_DEFENSE_ENABLED = process.env.INJECTION_DEFENSE_ENABLED ?? 'true';
 
 async function main(): Promise<void> {

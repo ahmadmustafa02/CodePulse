@@ -9,8 +9,8 @@ export const EMBEDDING_MODEL = 'text-embedding-3-small' as const;
 export const EMBEDDING_CHUNK_CHARS = 6000;
 
 /**
- * Cosine similarity to the malicious centroid.
- * Defaults are conservative (high bar to block); override via env after dry-run.
+ * Malicious score threshold (Phase 1.5: P(malicious) from logistic; Phase 1 fallback: cosine to malicious centroid).
+ * Defaults are conservative; override via env after dry-run / rebuild.
  */
 export function getBlockThreshold(): number {
   return env.INJECTION_BLOCK_THRESHOLD;

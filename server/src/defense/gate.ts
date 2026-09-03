@@ -130,21 +130,25 @@ export async function scanUntrustedContent(
       model: EMBEDDING_MODEL,
       skipped: false,
     };
-    empty.decisionId = await persistDecision({
-      organizationId: input.organizationId,
-      reviewJobId: input.jobId,
-      outcome: empty.outcome,
-      scoreMalicious: empty.scoreMalicious,
-      scoreSafe: empty.scoreSafe,
-      sources: empty.sources,
-      model: empty.model,
-    });
+    if (!input.skipPersist) {
+      empty.decisionId = await persistDecision({
+        organizationId: input.organizationId,
+        reviewJobId: input.jobId,
+        outcome: empty.outcome,
+        scoreMalicious: empty.scoreMalicious,
+        scoreSafe: empty.scoreSafe,
+        sources: empty.sources,
+        model: empty.model,
+      });
+    }
     return empty;
   }
 
   const embeddings = await embedTexts(units.map((u) => u.text));
+  let model: string = EMBEDDING_MODEL;
   const sources: ChunkScore[] = embeddings.map((embedding, index) => {
     const scored = scoreEmbedding(embedding);
+    model = scored.model;
     return {
       source: units[index].source,
       chunkIndex: index,
@@ -165,16 +169,18 @@ export async function scanUntrustedContent(
     }
   }
 
-  const model = EMBEDDING_MODEL;
-  const decisionId = await persistDecision({
-    organizationId: input.organizationId,
-    reviewJobId: input.jobId,
-    outcome,
-    scoreMalicious,
-    scoreSafe,
-    sources,
-    model,
-  });
+  let decisionId: string | undefined;
+  if (!input.skipPersist) {
+    decisionId = await persistDecision({
+      organizationId: input.organizationId,
+      reviewJobId: input.jobId,
+      outcome,
+      scoreMalicious,
+      scoreSafe,
+      sources,
+      model,
+    });
+  }
 
   logger.info('Injection defense scan complete', {
     jobId: input.jobId,
@@ -183,6 +189,8 @@ export async function scanUntrustedContent(
     scoreSafe,
     chunkCount: sources.length,
     decisionId,
+    model,
+    skipPersist: Boolean(input.skipPersist),
   });
 
   return {

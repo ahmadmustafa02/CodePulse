@@ -1,12 +1,17 @@
 # Classifier artifacts
 
-`centroids.json` is produced by:
+Produced by:
 
 ```bash
 cd server
 npm run defense:build-classifier
 ```
 
-Requires a valid `OPENAI_API_KEY`. Commit the generated `centroids.json` after a successful build. Do not invent placeholder vectors — they are not compatible with OpenAI embedding space.
+Requires `OPENAI_API_KEY`. Writes:
 
-Injection defense defaults to **off** (`INJECTION_DEFENSE_ENABLED=false`), so production can ship without this file until you enable the gate.
+- `centroids.json` — Phase 1 nearest-centroid fallback
+- `logistic.json` — Phase 1.5 logistic regression weights (preferred at runtime)
+
+Commit both after a successful build. Do not invent placeholder vectors.
+
+Runtime scorer loads `logistic.json` when present; otherwise falls back to centroids.

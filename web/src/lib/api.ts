@@ -8,6 +8,7 @@ import type {
   JobsOverview,
   JobTraceView,
   JobTraceEvent,
+  SecurityOverview,
 } from "@/types/api";
 import type { Severity } from "@/lib/severity";
 import { normalizeSeverity } from "@/lib/severity";
@@ -49,9 +50,10 @@ export const getReviews = () => apiFetch<ReviewItem[]>("/reviews");
 export const getTeam = () => apiFetch<TeamMember[]>("/team");
 export const getJobs = () => apiFetch<JobsOverview>("/jobs");
 export const getJobTrace = (jobId: string) => apiFetch<JobTraceView>(`/jobs/${jobId}/trace`);
+export const getSecurity = () => apiFetch<SecurityOverview>("/security");
 export const getSession = () => apiFetch<UserSession | null>("/auth/session");
 
-export type { JobsOverview, JobTraceView, JobTraceEvent };
+export type { JobsOverview, JobTraceView, JobTraceEvent, SecurityOverview };
 
 export async function logout(): Promise<void> {
   await apiFetch<null>("/auth/logout", { method: "POST" });
@@ -382,6 +384,7 @@ export const api = {
   stats: getStats,
   jobs: getJobs,
   jobTrace: getJobTrace,
+  security: getSecurity,
   repos: async () => {
     const repos = await getRepositories();
     return repos.map((repo) => mapRepo(repo, repo.pullRequestCount));
